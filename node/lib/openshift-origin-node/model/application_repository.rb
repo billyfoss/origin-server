@@ -158,7 +158,7 @@ module OpenShift
               expected_exitstatus: 0)
         rescue ::OpenShift::Runtime::Utils::ShellExecutionException => e
           if ssh_like? url
-            msg = "CLIENT_ERROR: Source code repository could not be cloned: '#{url}'. Please verify the repository is correct and try a non-SSH URL such as HTTP."
+            msg = "CLIENT_ERROR: Source code repository could not be cloned: '#{url}'. Git clone using SSH requires the OpenShift server to authenticate to the repository. Please verify the repository is correct, and try a non-SSH URL such as HTTPS."
           else
             msg = "CLIENT_ERROR: Source code repository could not be cloned: '#{url}'. Please verify the repository is correct and contact support."
           end
@@ -230,6 +230,8 @@ module OpenShift
       end
 
       def get_sha1(ref)
+        return '' unless exist?
+
         @deployment_ref = ref
 
         out, _, rc = @container.run_in_container_context(ERB.new(GIT_GET_SHA1).result(binding),
@@ -261,8 +263,9 @@ module OpenShift
         }
 
         render_file.call(PathUtils.join(@path, 'description'), 0644, GIT_DESCRIPTION)
-        render_file.call(PathUtils.join(@container.container_dir, '.gitconfig'), 0644, GIT_CONFIG)
-
+        if !File.exist?(PathUtils.join(@container.container_dir, '.gitconfig'))
+            render_file.call(PathUtils.join(@container.container_dir, '.gitconfig'), 0644, GIT_CONFIG)
+        end
         render_file.call(PathUtils.join(hooks, 'pre-receive'), 0755, PRE_RECEIVE)
         render_file.call(PathUtils.join(hooks, 'post-receive'), 0755, POST_RECEIVE)
       end

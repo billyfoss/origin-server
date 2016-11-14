@@ -17,7 +17,7 @@
 
 Summary:       Cloud Development Node
 Name:          rubygem-%{gem_name}
-Version: 1.31.2
+Version: 1.38.4
 Release:       1%{?dist}
 Group:         Development/Languages
 License:       ASL 2.0
@@ -115,6 +115,7 @@ mkdir -p %{buildroot}/usr/bin
 mkdir -p %{buildroot}/usr/sbin
 mkdir -p %{buildroot}%{appdir}/.tc_user_dir
 mkdir -p %{buildroot}%{_var}/log/openshift/node
+mkdir -p %{buildroot}%{_root_mandir}/man8/
 
 # Move the gem configs to the standard filesystem location
 mkdir -p %{buildroot}/etc/openshift
@@ -128,6 +129,8 @@ install -D -p -m 644 %{buildroot}%{gem_instdir}/misc/etc/openshift-origin-node.l
 %else
 install -D -p -m 644 %{buildroot}%{gem_instdir}/misc/etc/openshift-origin-node.logrotate.service %{buildroot}/etc/logrotate.d/%{name}
 %endif
+
+cp -p misc/man8/*.8 %{buildroot}%{_root_mandir}/man8/
 
 #move pam limit binaries to proper location
 mkdir -p %{buildroot}/usr/libexec/openshift/lib
@@ -232,7 +235,9 @@ fi
 %{gem_spec}
 %attr(0750,-,-) /usr/sbin/*
 %attr(0755,-,-) /usr/bin/*
-%attr(0750,-,-) %{_var}/log/openshift/node
+%attr(0751,-,-) %{_var}/log/openshift/node
+%attr(0640,-,-) %ghost %{_var}/log/openshift/node/platform.log
+%attr(0640,-,-) %ghost %{_var}/log/openshift/node/platform-trace.log
 /usr/libexec/openshift/lib/quota_attrs.sh
 /usr/libexec/openshift/lib/archive_git_submodules.sh
 %dir %attr(0755,-,-) %{openshift_lib}/cartridge_sdk
@@ -282,7 +287,210 @@ fi
 %attr(0755,-,-) /etc/cron.monthly/openshift-origin-cron-monthly
 %attr(0755,-,-) /etc/cron.daily/openshift-origin-stale-lockfiles
 
+%{_root_mandir}/man8/oo-admin-ctl-tc.8.gz
+%{_root_mandir}/man8/oo-admin-ctl-iptables-port-proxy.8.gz
+
 %changelog
+* Fri Oct 23 2015 Wesley Hearn <whearn@redhat.com> 1.38.4-1
+- FrontendHttpServer: Recover from missing manifest (miciah.masters@gmail.com)
+
+* Thu Oct 15 2015 Stefanie Forrester <sedgar@redhat.com> 1.38.3-1
+- Merge pull request #6247 from Miciah/bug-1111501-REPORT_BUILD_ANALYTICS-
+  should-be-set-to-false-by-default (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #6269 from dobbymoodge/rhcsh_cart-hook_cleanup
+  (dmcphers+openshiftbot@redhat.com)
+- Log errs and skip bad lines when writing env vars (miciah.masters@gmail.com)
+- fix rhcsh error output, clean up cart sub hooks (jolamb@redhat.com)
+- REPORT_BUILD_ANALYTICS=false by default (miciah.masters@gmail.com)
+
+* Mon Oct 12 2015 Stefanie Forrester <sedgar@redhat.com> 1.38.2-1
+- Merge pull request #6236 from Miciah/make-console-functional-tests-less-
+  random (dmcphers+openshiftbot@redhat.com)
+- Delete deadcode in node functional test (miciah.masters@gmail.com)
+
+* Thu Sep 17 2015 Unknown name 1.38.1-1
+- bump_minor_versions for sprint 103 (sedgar@jhancock.ose.phx2.redhat.com)
+
+* Thu Sep 17 2015 Unknown name 1.37.2-1
+- Merge pull request #6220 from tiwillia/bz1250904
+  (dmcphers+openshiftbot@redhat.com)
+- Fixed AuthorizedKeyFile model test to run with other unit tests successfully
+  (tiwillia@redhat.com)
+- Bug 1250904 - Allow ssh keys to be replaced with an empty list
+  (tiwillia@redhat.com)
+- Removing oo-broker prefixes for admin commands (abhgupta@redhat.com)
+
+* Thu Jul 02 2015 Wesley Hearn <whearn@redhat.com> 1.37.1-1
+- bump_minor_versions for 2.0.65 (whearn@redhat.com)
+
+* Tue Jun 30 2015 Wesley Hearn <whearn@redhat.com> 1.36.3-1
+- Bug 1031796 - Install missing man pages (jhonce@redhat.com)
+- Merge pull request #6173 from jwhonce/bug/1232907
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #6174 from jwhonce/bug/1130488
+  (dmcphers+openshiftbot@redhat.com)
+- Fix test_start_cartridge_system_initiated_no_stoplock (jhonce@redhat.com)
+- Bug 1130488 - Capture StandardError not Exception (jhonce@redhat.com)
+- Bug 1232907 - Only unidle on start by user (jhonce@redhat.com)
+- Bug 965364 - Restore creating gear with no git template (jhonce@redhat.com)
+- Merge pull request #6168 from danmcp/master
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1139538 (dmcphers@redhat.com)
+- Merge pull request #6165 from danmcp/master
+  (dmcphers+openshiftbot@redhat.com)
+- Fixes 1140552 and 1140558 (dmcphers@redhat.com)
+- Merge pull request #6091 from sdodson/bz1198777
+  (dmcphers+openshiftbot@redhat.com)
+- Fix spelling errors (dmcphers@redhat.com)
+- Change the priority number for openshift-tc (william17.burton@gmail.com)
+- Scale inodes by 80k per GB in example configs (sdodson@redhat.com)
+
+* Thu May 07 2015 Troy Dawson <tdawson@redhat.com> 1.36.2-1
+- Bug 1136425 Bug link https://bugzilla.redhat.com/show_bug.cgi?id=1136425
+  Disable password aging for gear users (tiwillia@redhat.com)
+- BZ1216220 - oo-snapshot fails when run outside of a gear
+  (tiwillia@redhat.com)
+
+* Thu Mar 19 2015 Adam Miller <admiller@redhat.com> 1.36.1-1
+- bump_minor_versions for sprint 60 (admiller@redhat.com)
+- Don't delete archives if tar returns !0 (jolamb@redhat.com)
+
+* Wed Feb 25 2015 Adam Miller <admiller@redhat.com> 1.35.4-1
+- Sanitize credentials during post-configure logging (ironcladlou@gmail.com)
+
+* Tue Feb 24 2015 Adam Miller <admiller@redhat.com> 1.35.3-1
+- Bug 1190856 - Allow Operator to stop gear with .stop_lock (jhonce@redhat.com)
+
+* Tue Feb 17 2015 Adam Miller <admiller@redhat.com> 1.35.2-1
+- Bug 1192557 - Fixed creating application using --from-code=empty when
+  database cartridge is also specified. (maszulik@redhat.com)
+
+* Thu Feb 12 2015 Adam Miller <admiller@redhat.com> 1.35.1-1
+- bump spec to fix tags (admiller@redhat.com)
+- Handle all encodings during regex comparisons (ironcladlou@gmail.com)
+- Merge pull request #6044 from detiber/bz1179006
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #6065 from ncdc/bz1187829-exclude-GEM_HOME-from-gear-
+  commands (dmcphers+openshiftbot@redhat.com)
+- Protect 'gear' command from gems in $GEM_HOME (agoldste@redhat.com)
+- Allow gear prioritization in startall/stopall (agrimm@redhat.com)
+- Merge pull request #6010 from a13m/bz1171289-master
+  (dmcphers+openshiftbot@redhat.com)
+- Fix tests for OOMPlugin (agrimm@redhat.com)
+- Bug 1179006 - CartridgeRepository latest_versions (jdetiber@redhat.com)
+
+* Thu Feb 12 2015 Adam Miller <admiller@redhat.com>
+- Handle all encodings during regex comparisons (ironcladlou@gmail.com)
+- Merge pull request #6044 from detiber/bz1179006
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #6065 from ncdc/bz1187829-exclude-GEM_HOME-from-gear-
+  commands (dmcphers+openshiftbot@redhat.com)
+- Protect 'gear' command from gems in $GEM_HOME (agoldste@redhat.com)
+- Allow gear prioritization in startall/stopall (agrimm@redhat.com)
+- Merge pull request #6010 from a13m/bz1171289-master
+  (dmcphers+openshiftbot@redhat.com)
+- Fix tests for OOMPlugin (agrimm@redhat.com)
+- Bug 1179006 - CartridgeRepository latest_versions (jdetiber@redhat.com)
+
+* Tue Jan 13 2015 Adam Miller <admiller@redhat.com> 1.34.1-1
+- bump spec to fix tags (admiller@redhat.com)
+- Merge pull request #6027 from sosiouxme/bz1155677-secondaryha-fqdn
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1178188 - Enhance logging ApplicationContainer#activate_local_gear
+  failures (jhonce@redhat.com)
+- node: fix secondary haproxy app fqdn (lmeyer@redhat.com)
+- Revert "we do not want %%ghost-ed log files" (lmeyer@redhat.com)
+- Removing debug logging added as a part of #4059 for bug 1025043
+  (j.hadvig@gmail.com)
+
+* Tue Jan 13 2015 Adam Miller <admiller@redhat.com>
+- Merge pull request #6027 from sosiouxme/bz1155677-secondaryha-fqdn
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1178188 - Enhance logging ApplicationContainer#activate_local_gear
+  failures (jhonce@redhat.com)
+- node: fix secondary haproxy app fqdn (lmeyer@redhat.com)
+- Revert "we do not want %%ghost-ed log files" (lmeyer@redhat.com)
+- Removing debug logging added as a part of #4059 for bug 1025043
+  (j.hadvig@gmail.com)
+
+* Mon Nov 24 2014 Adam Miller <admiller@redhat.com> 1.33.1-1
+- bump_minor_versions for sprint 54 (admiller@redhat.com)
+- Bug 1163964: Clarify message when ssh repository url fails
+  (jliggitt@redhat.com)
+- Bug 1163910 - Rename watchman log files (jhonce@redhat.com)
+
+* Wed Nov 12 2014 Adam Miller <admiller@redhat.com> 1.32.3-1
+- Merge pull request #5954 from ncdc/bug/1161072-vhost-multi-ha-app-dns
+  (dmcphers+openshiftbot@redhat.com)
+- Register app dns vhost for secondary haproxy gears (agoldste@redhat.com)
+
+* Wed Nov 12 2014 Adam Miller <admiller@redhat.com> 1.32.2-1
+- Merge pull request #5910 from a13m/aggressive-oom-kill
+  (dmcphers+openshiftbot@redhat.com)
+- Fix unit test for oom_plugin (agrimm@redhat.com)
+
+* Tue Nov 11 2014 Adam Miller <admiller@redhat.com> 1.32.1-1
+- Fix formatting (dmcphers@redhat.com)
+- Bug 1160494 - Protect Ops stop_gear from cartridge errors (jhonce@redhat.com)
+- Bug 1160752 - Add Watchman plugin to clean up vhost configurations
+  (jhonce@redhat.com)
+- Merge pull request #5813 from sztsian/bz1073725
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1160652 - Set defaults for the new crt/key/chain apache vhost plugin
+  configuration (bleanhar@redhat.com)
+- make the default crt/key/chain file to be configurable in vhost template
+  (rchopra@redhat.com)
+- Merge branch 'bz1073725' of https://github.com/sztsian/origin-server into
+  bz1073725 (zsun@fedoraproject.org)
+- Merge branch 'master' of https://github.com/openshift/origin-server into
+  bz1073725 (zsun@fedoraproject.org)
+- bz 1116750 fix the description of command "aliases" (zsun@fedoraproject.org)
+- add unit test function for bz 1073725 (sztsian@gmail.com)
+- iptables-port-proxy: use -n on iptables -L (lmeyer@redhat.com)
+- oo-trap-user: preserve quoting on shell commands (lmeyer@redhat.com)
+- bump_minor_versions for sprint 53 (admiller@redhat.com)
+- bz 1073725 https://bugzilla.redhat.com/show_bug.cgi?id=1073725 Test if the
+  env exists before reporting exceeded USER_VARIABLE_MAX_COUNT. If all the env
+  exists, just update them, otherwise report the error (zsun@fedoraproject.org)
+
+* Mon Oct 20 2014 Adam Miller <admiller@redhat.com> 1.31.7-1
+- Merge pull request #5890 from sosiouxme/rfe1134139
+  (dmcphers+openshiftbot@redhat.com)
+- oo-trap-user: make gear login syslog optional (lmeyer@redhat.com)
+- ssh keys: remove special logins (lmeyer@redhat.com)
+- ssh_authorized_keys: shell-escape the login (lmeyer@redhat.com)
+- fix whitespace (lmeyer@redhat.com)
+- app container proxy: Add user login to ssh authorized_keys file
+  (thunt@redhat.com)
+- oo-trap-user: Add support for OPENSHIFT_LOGIN environment variable
+  (thunt@redhat.com)
+- Bug 1146750 - Do not remove PI tmp directory when tidying (jhonce@redhat.com)
+- Bug 1153542 - Correct usage message (jhonce@redhat.com)
+- node: configure vhost as default frontend instead of mod-rewrite
+  (lmeyer@redhat.com)
+
+* Mon Oct 13 2014 Adam Miller <admiller@redhat.com> 1.31.6-1
+- Bug 1151648 - Skip any files in .cartridge_repository directory
+  (jhonce@redhat.com)
+
+* Thu Oct 09 2014 Adam Miller <admiller@redhat.com> 1.31.5-1
+- Bug 1148252 - Add status message (jhonce@redhat.com)
+- WIP Node Platform - Skip partial deployments (jhonce@redhat.com)
+
+* Tue Oct 07 2014 Adam Miller <admiller@redhat.com> 1.31.4-1
+- node.conf: correct IP_ADDRESS_WRAPAROUND_OFFSET param (lmeyer@redhat.com)
+- delete partial/broken archive on "tar" command failure (jolamb@redhat.com)
+- node archive: improve doc, config logic (jolamb@redhat.com)
+- broker/node: Add parameter for gear destroy to signal part of gear creation
+  (jolamb@redhat.com)
+- v2_cart_model: allow archiving of destroyed gears (jolamb@redhat.com)
+
+* Tue Sep 30 2014 Adam Miller <admiller@redhat.com> 1.31.3-1
+- Bug 1146767 - Check if hook file exists before showing notice
+  (mfojtik@redhat.com)
+- Bug 1145696 - Print notice to users when pushing non-executable action hooks
+  (mfojtik@redhat.com)
+
 * Tue Sep 23 2014 Adam Miller <admiller@redhat.com> 1.31.2-1
 - Expose haproxy-sni-proxy mapped ports as environmental variables
   (bparees@redhat.com)

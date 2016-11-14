@@ -3,7 +3,7 @@
 %global httpdconfdir /etc/openshift/cart.conf.d/httpd/php
 
 Name:          openshift-origin-cartridge-php
-Version: 1.29.1
+Version: 1.35.2
 Release:       1%{?dist}
 Summary:       Php cartridge
 Group:         Development/Languages
@@ -56,6 +56,89 @@ PHP cartridge for openshift. (Cartridge Format V2)
 
 
 %changelog
+* Fri Oct 23 2015 Wesley Hearn <whearn@redhat.com> 1.35.2-1
+- Bumping cartridge versions (abhgupta@redhat.com)
+
+* Thu Sep 17 2015 Unknown name 1.35.1-1
+- bump_minor_versions for sprint 103 (sedgar@jhancock.ose.phx2.redhat.com)
+
+* Thu Sep 17 2015 Unknown name 1.34.2-1
+- Bug 1138522 - Ensure performance.conf is processed after httpd_nolog.conf
+  (tiwillia@redhat.com)
+
+* Thu Jul 02 2015 Wesley Hearn <whearn@redhat.com> 1.34.1-1
+- bump_minor_versions for 2.0.65 (whearn@redhat.com)
+
+* Wed Jul 01 2015 Wesley Hearn <whearn@redhat.com> 1.33.3-1
+- Merge pull request #6186 from jhadvig/latest_versions
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #6185 from jhadvig/php_apc
+  (dmcphers+openshiftbot@redhat.com)
+- Bump cartridge versions for Sprint 64 (j.hadvig@gmail.com)
+- BZ1225327: Setting apc.stat on by default (j.hadvig@gmail.com)
+
+* Tue Jun 30 2015 Wesley Hearn <whearn@redhat.com> 1.33.2-1
+- Merge pull request #6180 from bparees/phplimits
+  (dmcphers+openshiftbot@redhat.com)
+- Missing the default value of ServerLimit and MaxClients in httpd.conf for php
+  cartridge (bparees@redhat.com)
+- Incorrect self-documents link in README.md for markers and cron under
+  .openshift (bparees@redhat.com)
+
+* Fri Apr 10 2015 Wesley Hearn <whearn@redhat.com> 1.33.1-1
+- bump_minor_versions for sprint 62 (whearn@redhat.com)
+
+* Wed Apr 08 2015 Wesley Hearn <whearn@redhat.com> 1.32.2-1
+- Bump cartridge versions for 2.0.60 (bparees@redhat.com)
+
+* Thu Mar 19 2015 Adam Miller <admiller@redhat.com> 1.32.1-1
+- bump_minor_versions for sprint 60 (admiller@redhat.com)
+- Updates PHP Composer, updates Help-Topics (jacoblucky@gmail.com)
+
+* Wed Feb 25 2015 Adam Miller <admiller@redhat.com> 1.31.4-1
+- Bump cartridge versions for Sprint 58 (maszulik@redhat.com)
+
+* Tue Feb 24 2015 Adam Miller <admiller@redhat.com> 1.31.3-1
+- Bug 1193193 - Fixed apc.shm_size values for php-5.4 (maszulik@redhat.com)
+
+* Fri Feb 20 2015 Adam Miller <admiller@redhat.com> 1.31.2-1
+- updating links for developer resources in initial pages for cartridges
+  (cdaley@redhat.com)
+
+* Thu Feb 12 2015 Adam Miller <admiller@redhat.com> 1.31.1-1
+- bump_minor_versions for sprint 57 (admiller@redhat.com)
+
+* Fri Jan 16 2015 Adam Miller <admiller@redhat.com> 1.30.3-1
+- Bumping cartridge versions (j.hadvig@gmail.com)
+
+* Tue Jan 13 2015 Adam Miller <admiller@redhat.com> 1.30.2-1
+- Change the style more readable (nakayamakenjiro@gmail.com)
+- Fix of bz1176491 (nakayamakenjiro@gmail.com)
+- Fix bug 1173796 (vvitek@redhat.com)
+- Change PHP 5.4 APC+OPCache memory comsumption formula (vvitek@redhat.com)
+- Remove extra unused file (vvitek@redhat.com)
+- Fix bug 1173796 (vvitek@redhat.com)
+- Refactor PHP enable_modules to support Zend Extensions (vvitek@redhat.com)
+- Move Xdebug enabling/disabling logic to enable_modules (vvitek@redhat.com)
+- Remove duplicate call to pre_start_httpd_config (vvitek@redhat.com)
+- Fix PHP 5.4 Zend OPCache default gear memory consumption (vvitek@redhat.com)
+
+* Tue Dec 09 2014 Adam Miller <admiller@redhat.com> 1.30.1-1
+- Merge pull request #6002 from VojtechVitek/enable_zend_opcache
+  (dmcphers+openshiftbot@redhat.com)
+- Make sure to disable OPCache for PHP 5.3 (vvitek@redhat.com)
+- Replace OPENSHIFT_PHP_OPCACHE_MEMORY_CONSUMPTION and tiny changes
+  (nakayamakenjiro@gmail.com)
+- Fixed zend opcache template (nakayamakenjiro@gmail.com)
+- Add zend opcache template to enable it (nakayamakenjiro@gmail.com)
+- bump_minor_versions for sprint 55 (admiller@redhat.com)
+
+* Wed Dec 03 2014 Adam Miller <admiller@redhat.com> 1.29.3-1
+- Cart version bump for Sprint 54 (vvitek@redhat.com)
+
+* Mon Nov 24 2014 Adam Miller <admiller@redhat.com> 1.29.2-1
+- Clean up & unify upgrade scripts (vvitek@redhat.com)
+
 * Thu Aug 21 2014 Adam Miller <admiller@redhat.com> 1.29.1-1
 - bump_minor_versions for sprint 50 (admiller@redhat.com)
 

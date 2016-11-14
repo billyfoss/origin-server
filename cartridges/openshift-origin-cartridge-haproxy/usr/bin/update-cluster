@@ -25,7 +25,8 @@ do
     esac
 done
 
-
+ORIG_LC_ALL="${LC_ALL}"
+REGEX_LC_ALL="POSIX"
 #[ $# -gt 3 ] || print_help
 
 exitcode=0
@@ -44,7 +45,7 @@ for arg in $kvargs; do
     zarr=(${zinfo//|/ })
     ep="${zarr[1]}"
     #  Add gear to the proxy configuration if not already in there.
-    #  Gear end-point is the form: $gear-ipaddress:$gear-port
+    #  Gear end-point is the form: $gear-address:$gear-port
     gear_name=$(echo "${zarr[0]}" | cut -f 1 -d '.')
 
     # Ensure endpoint is valid.
@@ -52,15 +53,19 @@ for arg in $kvargs; do
 
     # And of the form: $valid-dns-entry:$port-number
     # (valid-dns-entry regex portion from http://stackoverflow.com/a/3824105/305572)
+    # Set locale to POSIX for regex match - Bug 1261147
+    LC_ALL="${REGEX_LC_ALL}"
     if [[ ! $ep =~ ^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])(\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]))*:[0-9]{4,5}$ ]]; then
        # write/log error, set exit code but continue/process remaining entries.
        echo "${@:1:3} - Invalid endpoint '$ep' passed in input - $zinfo" 1>&2
        exitcode=22
        continue
     fi
+    # Restore user-set locale
+    LC_ALL="${ORIG_LC_ALL}"
 
-	# If this is the local gear, we are NOT creating an entry for it
-	# The local gear entry is made separately later below
+    # If this is the local gear, we are NOT creating an entry for it
+    # The local gear entry is made separately later below
     if [ "$OPENSHIFT_GEAR_DNS" != "${zarr[0]}" ]; then 
         flock 200
         curr_server_gears[$gear_name]="$ep"
@@ -106,8 +111,12 @@ fi
 local_ep=$local_ip:$local_port
 
 # Add the local gear
+# For cookie consistency with remote gears we'll use the gear's DNS name here,
+# which takes the form:   gearname-domain
+# (see the gear endpoint setup for remote gears in the for loop above)
+gear_name="${OPENSHIFT_GEAR_NAME}-${OPENSHIFT_NAMESPACE}"
 sed -i "/\s*server\s*local-gear\s.*/d" /tmp/haproxy.cfg.$$
-echo "    server local-gear $local_ep check fall 2 rise 3 inter 2000 cookie local-$OPENSHIFT_GEAR_UUID" >> /tmp/haproxy.cfg.$$
+echo "    server local-gear $local_ep check fall 2 rise 3 inter 2000 cookie $gear_name" >> /tmp/haproxy.cfg.$$
 
 cat /tmp/haproxy.cfg.$$ > "$haproxy_cfg"
 rm -f /tmp/haproxy.cfg.$$

@@ -10,7 +10,7 @@
 
 Summary:       OpenShift plugin for mcollective service
 Name:          rubygem-%{gem_name}
-Version: 1.30.2
+Version: 1.36.1
 Release:       1%{?dist}
 Group:         Development/Languages
 License:       ASL 2.0
@@ -85,6 +85,87 @@ sed -i -e "s|\(/etc/mcollective/client.cfg\)|%{scl_root}/\1|" %{buildroot}/etc/o
 %attr(0644,-,-) %ghost %{?scl:%scl_root}/etc/mcollective/client.cfg
 
 %changelog
+* Thu Sep 17 2015 Unknown name 1.36.1-1
+- bump_minor_versions for sprint 103 (sedgar@jhancock.ose.phx2.redhat.com)
+
+* Thu Sep 17 2015 Unknown name 1.35.4-1
+- Fix typos (dmcphers@redhat.com)
+- Bug 1234603: spreading gears for an app evenly across zones
+  (abhgupta@redhat.com)
+
+* Mon Aug 17 2015 Wesley Hearn <whearn@redhat.com> 1.35.3-1
+- Merge pull request #6172 from tiwillia/bz1229300
+  (dmcphers+openshiftbot@redhat.com)
+- Ensure proper quota is used when moving gears across node profiles
+  (tiwillia@redhat.com)
+
+* Tue Aug 11 2015 Wesley Hearn <whearn@redhat.com> 1.35.2-1
+- Bug 1241660 Ensure ignored servers does not include all servers only after
+  filtering (tiwillia@redhat.com)
+
+* Thu Jul 02 2015 Wesley Hearn <whearn@redhat.com> 1.35.1-1
+- bump_minor_versions for 2.0.65 (whearn@redhat.com)
+- Ignore least preferred servers if all servers are least preferred
+  (tiwillia@redhat.com)
+
+* Thu May 07 2015 Troy Dawson <tdawson@redhat.com> 1.34.2-1
+- Merge pull request #6116 from mmahut/oo-admin-move
+  (dmcphers+openshiftbot@redhat.com)
+- broker-util: allow oo-admin-move to eat a list of gears and add an final
+  output in json (mmahut@redhat.com)
+
+* Fri Apr 10 2015 Wesley Hearn <whearn@redhat.com> 1.34.1-1
+- bump_minor_versions for sprint 62 (whearn@redhat.com)
+
+* Tue Apr 07 2015 Wesley Hearn <whearn@redhat.com> 1.33.3-1
+- Bug 1174824 - Allow gear moves to rsync by node attributes other than IP
+  (agrimm@redhat.com)
+
+* Thu Mar 26 2015 Wesley Hearn <whearn@redhat.com> 1.33.2-1
+- Add more comments (dmcphers@redhat.com)
+- Be more precise than +1 to avoid edge cases and use a weighted selection
+  favoring most available nodes (dmcphers@redhat.com)
+
+* Thu Mar 19 2015 Adam Miller <admiller@redhat.com> 1.33.1-1
+- bump spec to fix tags (admiller@redhat.com)
+- Take district less into account when filtering available servers
+  (dmcphers@redhat.com)
+
+* Thu Mar 19 2015 Adam Miller <admiller@redhat.com>
+- Take district less into account when filtering available servers
+  (dmcphers@redhat.com)
+
+* Thu Feb 12 2015 Adam Miller <admiller@redhat.com> 1.32.1-1
+- Merge pull request #6050 from codificat/bz1147116-move-fails-if-eth0-has-no-
+  ip (dmcphers+openshiftbot@redhat.com)
+- bump_minor_versions for sprint 57 (admiller@redhat.com)
+- Use EXTERNAL_ETH_DEV to determine the node IP (pep@redhat.com)
+
+* Fri Jan 16 2015 Adam Miller <admiller@redhat.com> 1.31.2-1
+- typo: missing white space in mcollective_application_container_proxy.rb
+  (mmahut@redhat.com)
+
+* Tue Nov 11 2014 Adam Miller <admiller@redhat.com> 1.31.1-1
+- bump_minor_versions for sprint 53 (admiller@redhat.com)
+
+* Wed Oct 22 2014 Adam Miller <admiller@redhat.com> 1.30.6-1
+- Bug 1155478: Failed to add uid back to available_uids after gear move across
+  district (abhgupta@redhat.com)
+
+* Wed Oct 22 2014 Adam Miller <admiller@redhat.com> 1.30.5-1
+- Bug 1150140: Region was not being correctly handled during gear moves
+  (abhgupta@redhat.com)
+
+* Mon Oct 20 2014 Adam Miller <admiller@redhat.com> 1.30.4-1
+- app container proxy: Add user login to ssh authorized_keys file
+  (thunt@redhat.com)
+- Fixed bz1111562 (lxia@redhat.com)
+
+* Tue Oct 07 2014 Adam Miller <admiller@redhat.com> 1.30.3-1
+- node archive: improve doc, config logic (jolamb@redhat.com)
+- broker/node: Add parameter for gear destroy to signal part of gear creation
+  (jolamb@redhat.com)
+
 * Wed Sep 24 2014 Adam Miller <admiller@redhat.com> 1.30.2-1
 - Better error messages around no nodes available (dmcphers@redhat.com)
 

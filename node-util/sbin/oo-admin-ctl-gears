@@ -95,7 +95,7 @@ module OpenShift
       # @param msg [String] message denoting operation. E.g., 'Starting gear uuid'
       def okay(msg)
         NodeLogger.logger.info %Q((#{Process.pid}) #{msg}[ OK ])
-        $stdout.puts %Q(#{msg}[ #{$stdout.tty? ? GREEN : ''} OK #{$stdout.tty? ? NORMAL : ''}])
+        $stdout.puts %Q(#{msg}[#{$stdout.tty? ? GREEN : ''} OK #{$stdout.tty? ? NORMAL : ''}])
       end
 
       # Log success messages
@@ -153,15 +153,21 @@ module OpenShift
         failures.empty? ? 0 : 254
       end
 
+      def list(honor_lock = true)
+        gears(honor_lock).each do |gear|
+          puts "#{gear.uuid} #{gear.start_priority}"
+        end
+      end
+
       def start(honor_lock = true)
         results = Parallel.map(gears(honor_lock), @options) do |gear|
-          gear_action(gear, "Starting gear #{gear.uuid} ... ") { |g| g.start_gear }
+          gear_action(gear, "Starting gear #{gear.uuid} ... ") { |g| g.start_gear({user_initiated: false}) }
         end
         report_failures(results.select { |h| 0 != h[:exitstatus] })
       end
 
       def stop(honor_lock = true, force = false, init_owned = false)
-        results = Parallel.map(gears(honor_lock), @options) do |gear|
+        results = Parallel.map(gears(honor_lock, true), @options) do |gear|
           opt = {user_initiated: false}
           opt.merge!(@forced_options) if force
           opt.merge!({init_owned: true}) if init_owned
@@ -232,10 +238,10 @@ module OpenShift
         end
       end
 
-      def gears(honor_lock = true)
+      def gears(honor_lock = true, reversed = false)
         Enumerator.new do |yielder|
           if @uuids.nil?
-            ApplicationContainer.all(nil, false).each do |gear|
+            ApplicationContainer.all(nil, false).sort { |a,b| reversed ? b.start_priority <=> a.start_priority : a.start_priority <=> b.start_priority }.each do |gear|
               yielder.yield(gear) unless honor_lock && gear.stop_lock?
             end
           else
@@ -365,7 +371,7 @@ command :status do |c|
 end
 
 command :startgear do |c|
-  c.syntax      = "#{$name} #{c.name} <login name>"
+  c.syntax      = "#{$name} #{c.name} <gear uuid>"
   c.description = %q(start given gear)
 
   c.action do |args, options|
@@ -375,7 +381,7 @@ command :startgear do |c|
 end
 
 command :stopgear do |c|
-  c.syntax      = "#{$name} #{c.name} <login name>"
+  c.syntax      = "#{$name} #{c.name} <gear uuid>"
   c.description = %q(stop given gear ignoring stop_lock)
 
   c.action do |args, options|
@@ -384,8 +390,26 @@ command :stopgear do |c|
   end
 end
 
+command :stoplockgear do |c|
+  c.syntax      = "#{$name} #{c.name} --message MESSAGE <gear uuid>"
+  c.description = %q(stop given gear creating stop_lock)
+
+  c.option '-m', '--message MESSAGE', 'Reason why this gear is being stopped with a .stoplock'
+  c.action do |args, options|
+    raise 'Requires a gear uuid' if args.empty?
+    raise 'Requires reason for writing .stoplock file' unless options.message
+
+    rc = OpenShift::Runtime::AdminGearsControl.new(options, args).stop(IGNORE_LOCK)
+    args.each do |uuid|
+      container = OpenShift::Runtime::ApplicationContainer.from_uuid(uuid)
+      container.cartridge_model.create_stop_lock(options.message)
+    end
+    exit rc
+  end
+end
+
 command :forcestopgear do |c|
-  c.syntax      = "#{$name} #{c.name} <login name>"
+  c.syntax      = "#{$name} #{c.name} <gear uuid>"
   c.description = %q(stop given gear ignoring stop_lock with prejudice)
 
   c.action do |args, options|
@@ -395,7 +419,7 @@ command :forcestopgear do |c|
 end
 
 command :condstopgear do |c|
-  c.syntax      = "#{$name} #{c.name} <login name>"
+  c.syntax      = "#{$name} #{c.name} <gear uuid>"
   c.description = %q(attempt to stop cartridge daemons for given gear)
 
   c.action do |args, options|
@@ -405,7 +429,7 @@ command :condstopgear do |c|
 end
 
 command :restartgear do |c|
-  c.syntax      = "#{$name} #{c.name} <login name>"
+  c.syntax      = "#{$name} #{c.name} <gear uuid>"
   c.description = %q(restart given gear ignoring stop_lock)
 
   c.action do |args, options|
@@ -416,7 +440,7 @@ end
 
 
 command :statusgear do |c|
-  c.syntax      = "#{$name} #{c.name} <login name>"
+  c.syntax      = "#{$name} #{c.name} <gear uuid>"
   c.description = %q(report status of cartridges for given gear)
 
   c.action do |args, options|
@@ -426,7 +450,7 @@ command :statusgear do |c|
 end
 
 command :idlegear do |c|
-  c.syntax      = "#{$name} #{c.name} <login name>"
+  c.syntax      = "#{$name} #{c.name} <gear uuid>"
   c.description = %q(change gear state to idle)
 
   c.action do |args, options|
@@ -436,7 +460,7 @@ command :idlegear do |c|
 end
 
 command :unidlegear do |c|
-  c.syntax      = "#{$name} #{c.name} <login name>"
+  c.syntax      = "#{$name} #{c.name} <gear uuid>"
   c.description = %q(change gear state to started)
 
   c.action do |args, options|
@@ -452,8 +476,18 @@ command :list do |c|
   c.action { OpenShift::Runtime::ApplicationContainer.all_uuids.each { |u| $stdout.puts u } }
 end
 
+command :listbypriority do |c|
+  c.syntax      = "#{$name} #{c.name}"
+  c.description = %q(list all gears without a stop_lock)
+
+  c.action do |_, options|
+    OpenShift::Runtime::AdminGearsControl.new(options).list
+  end
+end
+
 command :listidle do |c|
   c.syntax = "#{$name} #{c.name}"
+  c.description = %q(list all the idle gears on node)
 
   c.action do
     OpenShift::Runtime::ApplicationContainer.all.each do |container|
@@ -481,3 +515,4 @@ command :metricsall do |c|
     OpenShift::Runtime::AdminGearsControl.new(options).metrics
   end
 end
+

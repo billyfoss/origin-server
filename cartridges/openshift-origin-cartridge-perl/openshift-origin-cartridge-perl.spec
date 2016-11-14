@@ -2,7 +2,7 @@
 %global httpdconfdir /etc/openshift/cart.conf.d/httpd/perl
 
 Name:          openshift-origin-cartridge-perl
-Version: 1.26.1
+Version: 1.30.1
 Release:       1%{?dist}
 Summary:       Perl cartridge
 Group:         Development/Languages
@@ -54,6 +54,49 @@ Perl cartridge for OpenShift. (Cartridge Format V2)
 
 
 %changelog
+* Thu Jul 02 2015 Wesley Hearn <whearn@redhat.com> 1.30.1-1
+- bump_minor_versions for 2.0.65 (whearn@redhat.com)
+
+* Wed Jul 01 2015 Wesley Hearn <whearn@redhat.com> 1.29.3-1
+- Bump cartridge versions for Sprint 64 (j.hadvig@gmail.com)
+
+* Tue Jun 30 2015 Wesley Hearn <whearn@redhat.com> 1.29.2-1
+- Incorrect self-documents link in README.md for markers and cron under
+  .openshift (bparees@redhat.com)
+- Install cpan dependencies in listed order (miciah.masters@gmail.com)
+
+* Thu Mar 19 2015 Adam Miller <admiller@redhat.com> 1.29.1-1
+- bump_minor_versions for sprint 60 (admiller@redhat.com)
+
+* Wed Feb 25 2015 Adam Miller <admiller@redhat.com> 1.28.3-1
+- Bump cartridge versions for Sprint 58 (maszulik@redhat.com)
+
+* Fri Feb 20 2015 Adam Miller <admiller@redhat.com> 1.28.2-1
+- updating links for developer resources in initial pages for cartridges
+  (cdaley@redhat.com)
+
+* Thu Feb 12 2015 Adam Miller <admiller@redhat.com> 1.28.1-1
+- bump_minor_versions for sprint 57 (admiller@redhat.com)
+
+* Fri Jan 16 2015 Adam Miller <admiller@redhat.com> 1.27.3-1
+- Bumping cartridge versions (j.hadvig@gmail.com)
+
+* Tue Jan 13 2015 Adam Miller <admiller@redhat.com> 1.27.2-1
+- Bug 1179923: Fix update (j.hadvig@gmail.com)
+- Bug 1179923: Excluding Perl pragmas added by perl.req (j.hadvig@gmail.com)
+- Merge pull request #5888 from mfojtik/cpan (dmcphers+openshiftbot@redhat.com)
+- Bug 1039356 - Skip the failed CPAN modules to allow build to finish
+  (mfojtik@redhat.com)
+
+* Tue Dec 09 2014 Adam Miller <admiller@redhat.com> 1.27.1-1
+- bump_minor_versions for sprint 55 (admiller@redhat.com)
+
+* Wed Dec 03 2014 Adam Miller <admiller@redhat.com> 1.26.3-1
+- Cart version bump for Sprint 54 (vvitek@redhat.com)
+
+* Mon Nov 24 2014 Adam Miller <admiller@redhat.com> 1.26.2-1
+- Clean up & unify upgrade scripts (vvitek@redhat.com)
+
 * Thu Jun 26 2014 Adam Miller <admiller@redhat.com> 1.26.1-1
 - bump_minor_versions for sprint 47 (admiller@redhat.com)
 

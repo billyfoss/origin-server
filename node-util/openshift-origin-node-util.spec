@@ -10,7 +10,7 @@
 
 Summary:       Utility scripts for the OpenShift Origin node
 Name:          openshift-origin-node-util
-Version: 1.30.1
+Version: 1.38.5
 Release:       1%{?dist}
 Group:         Network/Daemons
 License:       ASL 2.0
@@ -145,6 +145,7 @@ rm -rf %{buildroot}
 %attr(0750,-,-) %{_sbindir}/oo-restorecon
 %attr(0750,-,-) %{_sbindir}/oo-restorer
 %attr(0750,-,-) %{_sbindir}/oo-admin-gear
+%attr(0750,-,-) %{_sbindir}/oo-gear-firewall
 %attr(0750,-,apache) %{_sbindir}/oo-restorer-wrapper.sh
 %attr(0750,-,-) %{_sbindir}/oo-httpd-singular
 %attr(0750,-,-) %{_sbindir}/oo-su
@@ -153,6 +154,7 @@ rm -rf %{buildroot}
 %attr(0750,-,-) %{_sbindir}/oo-admin-repair-node
 %attr(0750,-,-) %{_sbindir}/oo-admin-regenerate-gear-metadata
 %attr(0750,-,-) %{_sbindir}/oo-watchman
+%attr(0750,-,-) %{_sbindir}/oo-admin-geartop
 %attr(0750,-,-) %{_initddir}/openshift-watchman
 %attr(0755,-,-) %{_bindir}/rhc-list-ports
 %attr(0755,-,-) %{_bindir}/oo-snapshot
@@ -171,6 +173,8 @@ rm -rf %{buildroot}
 
 %{_mandir}/man8/oo-accept-node.8.gz
 %{_mandir}/man8/oo-admin-gear.8.gz
+%{_mandir}/man8/oo-admin-geartop.8.gz
+%{_mandir}/man8/oo-gear-firewall.8.gz
 %{_mandir}/man8/oo-admin-ctl-gears.8.gz
 %{_mandir}/man8/oo-auto-idler.8.gz
 %{_mandir}/man8/oo-idler-stats.8.gz
@@ -186,6 +190,8 @@ rm -rf %{buildroot}
 %{_mandir}/man8/oo-su.8.gz
 %{_mandir}/man8/oo-cartridge.8.gz
 %{_mandir}/man8/oo-watchman.8.gz
+%{_mandir}/man8/oo-admin-repair-node.8.gz
+%{_mandir}/man8/oo-admin-regenerate-gear-metadata.8.gz
 
 %attr(0640,-,-) %config(noreplace) %{_sysconfdir}/oddjobd.conf.d/oddjobd-restorer.conf
 %attr(0644,-,-) %config(noreplace) %{_sysconfdir}/dbus-1/system.d/openshift-restorer.conf
@@ -201,6 +207,181 @@ rm -rf %{buildroot}
 %endif
 
 %changelog
+* Fri Oct 23 2015 Wesley Hearn <whearn@redhat.com> 1.38.5-1
+- Merge pull request #6284 from Miciah/bug-1260204-2
+  (dmcphers+openshiftbot@redhat.com)
+- oo-last-access: Fix failure if no last access file (miciah.masters@gmail.com)
+- oo-watchman.8: "with it's" -> "with its" (miciah.masters@gmail.com)
+
+* Tue Oct 20 2015 Stefanie Forrester <sedgar@redhat.com> 1.38.4-1
+- Merge pull request #6276 from thrasher-redhat/master
+  (dmcphers+openshiftbot@redhat.com)
+- oo-auto-idler man page: updates man page to be consistent with functionality
+  (rthrashe@redhat.com)
+
+* Thu Oct 15 2015 Stefanie Forrester <sedgar@redhat.com> 1.38.3-1
+- oo-restorecon: run it on the gear's top level dir (pep@redhat.com)
+
+* Mon Oct 12 2015 Stefanie Forrester <sedgar@redhat.com> 1.38.2-1
+- Fix verbose option for oo-restorecon man page (nakayamakenjiro@gmail.com)
+- oo-accept-node Report errors if selinux contexts on $GEAR_BASE_DIR are
+  incorrect (tiwillia@redhat.com)
+
+* Thu Sep 17 2015 Unknown name 1.38.1-1
+- bump_minor_versions for sprint 103 (sedgar@jhancock.ose.phx2.redhat.com)
+
+* Thu Sep 17 2015 Unknown name 1.37.3-1
+- Bug 1260204 - Only write newer timestamps to last_access files
+  (agrimm@redhat.com)
+
+* Tue Aug 11 2015 Wesley Hearn <whearn@redhat.com> 1.37.2-1
+- oo-accept-node: Parse manifest with Manifest class (miciah.masters@gmail.com)
+- oo-accept-node: honor application names starting with 0 (mmahut@redhat.com)
+
+* Thu Jul 02 2015 Wesley Hearn <whearn@redhat.com> 1.37.1-1
+- bump_minor_versions for 2.0.65 (whearn@redhat.com)
+
+* Tue Jun 30 2015 Wesley Hearn <whearn@redhat.com> 1.36.3-1
+- Merge pull request #6170 from tiwillia/bz1230911
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1031796 - Install missing man pages (jhonce@redhat.com)
+- Validate gear frontend configurations for vhost plugin (tiwillia@redhat.com)
+- Merge pull request #6173 from jwhonce/bug/1232907
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1130488 - Capture StandardError not Exception (jhonce@redhat.com)
+- Bug 1232907 - Only unidle on start by user (jhonce@redhat.com)
+- Merge pull request #6167 from danmcp/master
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #6166 from danmcp/master
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1187841 (dmcphers@redhat.com)
+- Use gear uuid instead of login name to describe arg (dmcphers@redhat.com)
+- Merge pull request #6165 from danmcp/master
+  (dmcphers+openshiftbot@redhat.com)
+- Fixes 1140552 and 1140558 (dmcphers@redhat.com)
+- Bug 1140486 (dmcphers@redhat.com)
+- Merge pull request #6087 from getupcloud/patch-2
+  (dmcphers+openshiftbot@redhat.com)
+- oo-init-quota: Ignore commented lines in /etc/fstab (tiwillia@redhat.com)
+- Watchman retry delay delta is in seconds (getup@getupcloud.com)
+
+* Thu May 07 2015 Troy Dawson <tdawson@redhat.com> 1.36.2-1
+- Bug 1136425 Bug link https://bugzilla.redhat.com/show_bug.cgi?id=1136425
+  Disable password aging for gear users (tiwillia@redhat.com)
+
+* Fri Apr 10 2015 Wesley Hearn <whearn@redhat.com> 1.36.1-1
+- bump_minor_versions for sprint 62 (whearn@redhat.com)
+
+* Tue Apr 07 2015 Wesley Hearn <whearn@redhat.com> 1.35.2-1
+- Bug 1207486 - stop_lock gears have status of "started" (bleanhar@redhat.com)
+
+* Thu Mar 19 2015 Adam Miller <admiller@redhat.com> 1.35.1-1
+- bump_minor_versions for sprint 60 (admiller@redhat.com)
+- oo-admin-ctl-gears: removing a white space (mmahut@redhat.com)
+- node-util: add oo-admin-geartop (sdodson@redhat.com)
+
+* Tue Feb 24 2015 Adam Miller <admiller@redhat.com> 1.34.4-1
+- Bug 1190856 - Allow Operator to stop gear with .stop_lock (jhonce@redhat.com)
+
+* Fri Feb 20 2015 Adam Miller <admiller@redhat.com> 1.34.3-1
+- Merge pull request #6080 from dobbymoodge/watchman_BZ1134686
+  (dmcphers+openshiftbot@redhat.com)
+- Avoid skipping jenkins builders in gear ps list (jolamb@redhat.com)
+
+* Thu Feb 19 2015 Adam Miller <admiller@redhat.com> 1.34.2-1
+- Fixing typos (dmcphers@redhat.com)
+
+* Thu Feb 12 2015 Adam Miller <admiller@redhat.com> 1.34.1-1
+- Handle all encodings during regex comparisons (ironcladlou@gmail.com)
+- Allow gear prioritization in startall/stopall (agrimm@redhat.com)
+- Merge pull request #6010 from a13m/bz1171289-master
+  (dmcphers+openshiftbot@redhat.com)
+- Fix tests for OOMPlugin (agrimm@redhat.com)
+- Merge pull request #5986 from detiber/bz1165719
+  (dmcphers+openshiftbot@redhat.com)
+- bump_minor_versions for sprint 57 (admiller@redhat.com)
+- Bug 1171289 - background pkill command in OOMPlugin (agrimm@redhat.com)
+- Bug 1165719 - oo-accept-node incorrectly using manifests from cart repository
+  (jdetiber@redhat.com)
+
+* Fri Jan 16 2015 Adam Miller <admiller@redhat.com> 1.33.3-1
+- Merge pull request #6017 from a13m/bz1173180-m
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1173180 - Check for frontend directory existence before calling rm_r
+  (agrimm@redhat.com)
+
+* Tue Jan 13 2015 Adam Miller <admiller@redhat.com> 1.33.2-1
+- Merge pull request #6018 from sosiouxme/bz1172548-oo-last-access
+  (dmcphers+openshiftbot@redhat.com)
+- oo-last-access: fix gear UUID detection (lmeyer@redhat.com)
+- oo-last-access: rename "app" to "gear" (lmeyer@redhat.com)
+- restorer.php: allow predictable UUIDs to be restored too (lmeyer@redhat.com)
+- Bug 1172323 - Only remove unreferenced empty directories from the frontend
+  configuration (rpenta@redhat.com)
+- Revert "Bug 1169306: Clean up standalone db gear http conf in watchman."
+  (admiller@redhat.com)
+
+* Tue Dec 09 2014 Adam Miller <admiller@redhat.com> 1.33.1-1
+- bump_minor_versions for sprint 55 (admiller@redhat.com)
+
+* Tue Dec 02 2014 Adam Miller <admiller@redhat.com> 1.32.2-1
+- Bug 1169306: Clean up standalone db gear http conf in watchman.
+  (mrunalp@gmail.com)
+
+* Mon Nov 24 2014 Adam Miller <admiller@redhat.com> 1.32.1-1
+- bump_minor_versions for sprint 54 (admiller@redhat.com)
+- Use absolute path to apachectl (agrimm@redhat.com)
+- Merge pull request #5767 from sztsian/bz1132299
+  (dmcphers+openshiftbot@redhat.com)
+- bz1132299 throw runtime error if oo-admin-cartridge failed to install a
+  cartridge (sztsian@gmail.com)
+- Bug 1163910 - Rename watchman log files (jhonce@redhat.com)
+- Bug 1163068 - Update oo-watchman man page (jhonce@redhat.com)
+
+* Wed Nov 12 2014 Adam Miller <admiller@redhat.com> 1.31.3-1
+- Merge pull request #5954 from ncdc/bug/1161072-vhost-multi-ha-app-dns
+  (dmcphers+openshiftbot@redhat.com)
+- Register app dns vhost for secondary haproxy gears (agoldste@redhat.com)
+
+* Wed Nov 12 2014 Adam Miller <admiller@redhat.com> 1.31.2-1
+- Merge pull request #5910 from a13m/aggressive-oom-kill
+  (dmcphers+openshiftbot@redhat.com)
+- Fix unit test for oom_plugin (agrimm@redhat.com)
+- Don't call unidle prematurely from GearStatePlugin (agoldste@redhat.com)
+- Kill out-of-memory gears more aggressively to reduce downtime
+  (agrimm@redhat.com)
+
+* Tue Nov 11 2014 Adam Miller <admiller@redhat.com> 1.31.1-1
+- Fix calls to config (jhonce@redhat.com)
+- Bug 1162096 - Fix oo-admin-gear destroygear (jhonce@redhat.com)
+- Merge pull request #5932 from jwhonce/bug/1160752
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1160752 - Make Watchman frontend cleanup period configurable
+  (jhonce@redhat.com)
+- Revert "bz1147054 - use common lockfile" (jhonce@redhat.com)
+- Revert "bz1151744 - wrap the wait for reload to finish inside of the
+  lockfile" (jhonce@redhat.com)
+- Bug 1160752 - Add Watchman plugin to clean up vhost configurations
+  (jhonce@redhat.com)
+- Bug 1160752 - Make apache-vhost more atomic (jhonce@redhat.com)
+- Perf Improvement? (dmcphers@redhat.com)
+- Bug 1160770 - consider CNAMEs when checking last access (agrimm@redhat.com)
+- node-util: "conflicting TE rule" for openshift.pp (lmeyer@redhat.com)
+- bump_minor_versions for sprint 53 (admiller@redhat.com)
+
+* Mon Oct 20 2014 Adam Miller <admiller@redhat.com> 1.30.5-1
+- bz1151744 - wrap the wait for reload to finish inside of the lockfile
+  (rchopra@redhat.com)
+
+* Mon Oct 13 2014 Adam Miller <admiller@redhat.com> 1.30.4-1
+- node: add oo-gear-firewall tool (lmeyer@redhat.com)
+
+* Wed Oct 01 2014 Adam Miller <admiller@redhat.com> 1.30.3-1
+- Bug 1141922 (lnader@redhat.com)
+
+* Tue Sep 30 2014 Adam Miller <admiller@redhat.com> 1.30.2-1
+- bz1147054 - use common lockfile (rchopra@redhat.com)
+
 * Thu Sep 18 2014 Adam Miller <admiller@redhat.com> 1.30.1-1
 - bump_minor_versions for sprint 51 (admiller@redhat.com)
 - Watchman filters out haproxy/logshifter (agoldste@redhat.com)

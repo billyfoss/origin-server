@@ -125,11 +125,11 @@ class FunctionalApi
     response['data'].each do |app_data|
       id = app_data['id']
       logger.info("Deleting application id #{id}")
-      RestClient.delete("#{@url_base}/applications/#{id}", {timeout: 480})
+      RestClient::Request.execute(method: :delete, url: "#{@url_base}/applications/#{id}", headers: {accept: :json}, timeout: 480)
     end
 
     logger.info("Deleting domain #{@namespace}")
-    RestClient.delete("#{@url_base}/domains/#{@namespace}")
+    RestClient::Request.execute(method: :delete, url: "#{@url_base}/domains/#{@namespace}", headers: {accept: :json})
   end
 
   def create_application(app_name, cartridges, scaling = true)
@@ -242,12 +242,12 @@ EOFZ
 
   def up_gears(num=5)
     logger.info "Upping gears for #{@login}"
-    logger.info `oo-broker --non-interactive oo-admin-ctl-user -l #{@login} --setmaxgears #{num}`
+    logger.info `oo-admin-ctl-user -l #{@login} --setmaxgears #{num}`
   end
 
   def enable_ha
     logger.info "Enabling HA for test user #{@login}"
-    logger.info `oo-broker --non-interactive oo-admin-ctl-user -l #{@login} --allowha true`
+    logger.info `oo-admin-ctl-user -l #{@login} --allowha true`
   end
 
   def make_ha(app_name)

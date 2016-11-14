@@ -199,18 +199,70 @@ module OpenShift
         Manifest.new(manifest_path, version, :file, @container.container_dir)
       end
 
-      # destroy(skip_hooks = false) -> [buffer, '', 0]
+      # Optionally back up the gear directory contents to a
+      # user-specified "dump site" if a gear is rolled back due to
+      # failure during app create
+      def archive_gear()
+        archive_dir = @config.get("ARCHIVE_DESTROYED_GEARS_DIR", nil)
+        archive_compress = @config.get("ARCHIVE_DESTROYED_GEARS_COMPRESSION", 'bzip2').downcase
+        archive_suffix = ""
+        if not [ 'bzip2', 'gzip', 'none' ].include? archive_compress
+          archive_compress = 'bzip2'
+        end
+        case archive_compress
+        when 'bzip2'
+          archive_compress = "--#{archive_compress}"
+          archive_suffix = '.bz2'
+        when 'gzip'
+          archive_compress = "--#{archive_compress}"
+          archive_suffix = '.gz'
+        when 'none'
+          archive_compress = ''
+          archive_suffix = ''
+        end
+        if @config.get_bool("ARCHIVE_DESTROYED_GEARS", false)
+          if not archive_dir
+            logger.warn "Cannot archive destroyed gears; ARCHIVE_DESTROYED_GEARS_DIR is not set in node.conf"
+            return
+          elsif not File.directory? archive_dir
+            logger.warn "Cannot archive destroyed gears; #{archive_dir} is not a directory"
+            return
+          elsif not File.writable? archive_dir
+            logger.warn "Cannot archive destroyed gears; #{archive_dir} is not writable"
+            return
+          elsif File.world_readable? archive_dir or File.world_writable? archive_dir
+            logger.warn "Cannot archive destroyed gears; #{archive_dir} is world readable and/or writable"
+            return
+          end
+          archive_filespec = PathUtils.join(archive_dir, "#{@container.application_name}-#{@container.uuid}.tar#{archive_suffix}")
+          if File.exists? archive_filespec
+            logger.warn "Cannot archive destroyed gears; #{archive_filespec} already exists"
+          else
+            command = "tar --selinux --acls --preserve-permissions --preserve-order --create #{archive_compress} --file=#{archive_filespec} #{@container.container_dir}"
+            tarout, tarerr, rc = Utils.oo_spawn(command)
+            if rc == 1
+              logger.warn "Some files may have changed while running \"#{command}\"; rc=#{rc}, stdout=#{tarout}, stderr=#{tarerr}"
+            elsif rc != 0
+              logger.warn "Error occurred running \"#{command}\"; rc=#{rc}, stdout=#{tarout}, stderr=#{tarerr}"
+            end
+          end
+        end
+      end
+
+      # destroy(skip_hooks = false, is_group_rollback = false) -> [buffer, '', 0]
       #
       # Remove all cartridges from a gear and delete the gear.  Accepts
       # and discards any parameters to comply with the signature of V1
       # require, which accepted a single argument.
       #
       # destroy() => ['', '', 0]
-      def destroy(skip_hooks = false)
+      def destroy(skip_hooks = false, is_group_rollback = false)
         logger.info('V2 destroy')
 
         buffer = ''
         begin
+          # only archive if app create failed
+          archive_gear if is_group_rollback
           unless skip_hooks
             each_cartridge do |cartridge|
               unlock_gear(cartridge, false) do |c|
@@ -345,15 +397,19 @@ module OpenShift
         cartridge              = get_cartridge(name)
 
         ::OpenShift::Runtime::Utils::Cgroups.new(@container.uuid).boost do
-          if empty_repository?
-            output << "CLIENT_MESSAGE: An empty Git repository has been created for your application.  Use 'git push' to add your code." if cartridge.name == primary_cartridge.name
+          if cartridge.name == primary_cartridge.name and empty_repository?
+            output << "CLIENT_MESSAGE: An empty Git repository has been created for your application.  Use 'git push' to add your code."
           else
-            output << start_cartridge('start', cartridge, user_initiated: true)
+            if (@state.value == State::STARTED)
+              output << start_cartridge('restart', cartridge, user_initiated: true)
+            else
+              output << start_cartridge('start', cartridge, user_initiated: true)
+            end
           end
           output << cartridge_action(cartridge, 'post_install', software_version)
         end
 
-        logger.info("post-configure output: #{output}")
+        logger.info("post-configure output: #{Runtime::Utils.sanitize_credentials(output)}")
         output
       rescue ::OpenShift::Runtime::Utils::ShellExecutionException => e
         raise ::OpenShift::Runtime::Utils::Sdk.translate_shell_ex_for_client(e, 157)
@@ -668,8 +724,13 @@ module OpenShift
             name = "OPENSHIFT_#{name}"
           end
 
-          File.open(PathUtils.join(path, name), 'w', 0666) do |f|
-            f.write(v)
+          pathname = PathUtils.join(path, name)
+          begin
+            File.open(pathname, 'w', 0666) do |f|
+              f.write(v)
+            end
+          rescue Exception => e
+            logger.warn "Got #{e.class} exception writing #{pathname}: #{e.message}"
           end
         end
       end
@@ -1026,7 +1087,6 @@ module OpenShift
       # This is only called when a cartridge is removed from a cartridge not a gear delete
       def disconnect_frontend(cartridge)
         gear_env       = ::OpenShift::Runtime::Utils::Environ.for_gear(@container.container_dir)
-        app_dns        = gear_env["OPENSHIFT_APP_DNS"].to_s.downcase
 
         mappings = []
         cartridge.endpoints.each do |endpoint|
@@ -1039,15 +1099,6 @@ module OpenShift
         unless mappings.empty?
           fe_server =  FrontendHttpServer.new(@container)
           fe_server.disconnect(*mappings)
-          if cartridge.web_proxy?
-            gear_fqdn = fe_server.fqdn
-            if gear_fqdn != app_dns
-              # secondary web-proxy gear
-              fe_server.set_fqdn(app_dns)
-              fe_server.disconnect(*mappings)
-              fe_server.set_fqdn(gear_fqdn)
-            end
-          end
         end
       end
 
@@ -1092,22 +1143,14 @@ module OpenShift
               logger.info("Connecting frontend mapping for #{@container.uuid}/#{cartridge.name}: "\
                       "[#{mapping.frontend}] => [#{backend_uri}] with options: #{mapping.options}")
               reported_urls = frontend.connect(mapping.frontend, backend_uri, options)
-              if cartridge.web_proxy?
-                gear_fqdn = frontend.fqdn
-                if gear_fqdn != app_dns
-                  # secondary web-proxy gear
-                  frontend.set_fqdn(app_dns)
-                  new_options = options.dup
-                  # target_update will misfire because fqdn has changed
-                  new_options.delete("target_update")
-                  reported_urls += frontend.connect(mapping.frontend, backend_uri, new_options)
-                  frontend.set_fqdn(gear_fqdn)
-                end
+              if cartridge.web_proxy? && frontend.fqdn != app_dns
+                # secondary web-proxy gear should have app DNS routed too
+                frontend.add_alias(app_dns)
               end
               if reported_urls
                 reported_urls.each do |url|
                   outstr = "Cartridge #{cartridge.name} endpoint #{endpoint.private_port_name} is exposed at URL #{url}"
-                  
+
                   # Add env variable for the public port mapping.
                   @container.add_env_var(endpoint.public_port_name, url[/(\d+)$/])
                   if endpoint.description
@@ -1188,6 +1231,8 @@ module OpenShift
         pairs = args[3].values[0].split("\n")
 
         pairs.each do |pair|
+          next if not pair.include? '='
+
           k, v    = pair.strip.split("=")
           envs[k] = v
         end
@@ -1565,16 +1610,18 @@ module OpenShift
         end
 
         if cartridge.name == primary_cartridge.name
-          FileUtils.rm_f(stop_lock) if options[:user_initiated]
+          if options[:user_initiated]
+            FileUtils.rm_f(stop_lock)
 
-          # Unidle the application, preferring to use the privileged operation if possible
-          frontend = FrontendHttpServer.new(@container)
-          if Process.uid == @container.uid
-            frontend.unprivileged_unidle
-          else
-            frontend.unidle
+            # Unidle the application, preferring to use the privileged operation if possible
+            frontend = FrontendHttpServer.new(@container)
+            if Process.uid == @container.uid
+              frontend.unprivileged_unidle
+            else
+              frontend.unidle
+            end
+
           end
-
           @state.value = State::STARTED
         end
 
@@ -1634,9 +1681,11 @@ module OpenShift
 
       ##
       # Writes the +stop_lock+ file and changes its ownership to the gear user.
-      def create_stop_lock
+      def create_stop_lock(reason = nil)
         unless stop_lock?
-          File.new(stop_lock, File::CREAT|File::TRUNC|File::WRONLY, 0644).close()
+          File.open(stop_lock, File::CREAT|File::TRUNC|File::WRONLY, 0644) do |f|
+            f.write(reason) if reason
+          end
           @container.set_rw_permission(stop_lock)
         end
       end

@@ -79,6 +79,7 @@ Requires:      %{?scl:%scl_prefix}rubygem-metaclass
 Requires:      %{?scl:%scl_prefix}rubygem-mime-types
 Requires:      %{?scl:%scl_prefix}rubygem-moped
 Requires:      %{?scl:%scl_prefix}rubygem-multi_json
+Requires:      %{?scl:%scl_prefix}rubygem-net-ssh
 Requires:      %{?scl:%scl_prefix}rubygem-origin
 Requires:      %{?scl:%scl_prefix}rubygem-polyglot
 Requires:      %{?scl:%scl_prefix}rubygem-rack
@@ -164,9 +165,6 @@ cp conf/broker.conf %{buildroot}%{_sysconfdir}/openshift/broker-dev.conf
 cp conf/quickstarts.json %{buildroot}%{_sysconfdir}/openshift/quickstarts.json
 cp conf/plugins.d/README %{buildroot}%{_sysconfdir}/openshift/plugins.d/README
 
-mkdir -p %{buildroot}%{_sbindir}
-cp bin/oo-broker %{buildroot}%{_sbindir}/oo-broker
-
 # BZ986300
 rm -f %{buildroot}%{brokerdir}/COPYRIGHT
 rm -f %{buildroot}%{brokerdir}/.gitignore
@@ -201,18 +199,25 @@ sed -i -e '/NON-RUNTIME BEGIN/,/NON-RUNTIME END/d' %{buildroot}%{brokerdir}/Gemf
 %defattr(0640,apache,apache,0750)
 %attr(0750,-,-) %{_var}/log/openshift/broker
 %attr(0750,-,-) %{_var}/log/openshift/broker/httpd
+%attr(0640,-,-) %ghost %{_var}/log/openshift/broker/production.log
+%attr(0640,-,-) %ghost %{_var}/log/openshift/broker/development.log
+%attr(0640,-,-) %ghost %{_var}/log/openshift/broker/user_action.log
+%attr(0640,-,-) %ghost %{_var}/log/openshift/broker/usage.log
 %attr(0750,-,-) %{brokerdir}/script
 %attr(0750,-,-) %{brokerdir}/tmp
 %attr(0750,-,-) %{brokerdir}/tmp/cache
 %attr(0750,-,-) %{brokerdir}/tmp/pids
 %attr(0750,-,-) %{brokerdir}/tmp/sessions
 %attr(0750,-,-) %{brokerdir}/tmp/sockets
-%attr(0750,root,root) %{_sbindir}/oo-broker
 %dir %attr(0750,-,-) %{brokerdir}/httpd/conf.d
 %{brokerdir}
 %{htmldir}/broker
+# these are conf files, but we do not usually want users to edit them:
+%config %{brokerdir}/httpd/broker.conf
+%config %{brokerdir}/httpd/httpd.conf
 %config %{brokerdir}/config/environments/production.rb
 %config %{brokerdir}/config/environments/development.rb
+# these confs are likely to require user editing; updates should not overwrite edits:
 %config(noreplace) %{_sysconfdir}/httpd/conf.d/000002_openshift_origin_broker_proxy.conf
 %config(noreplace) %{_sysconfdir}/httpd/conf.d/000002_openshift_origin_broker_servername.conf
 %config(noreplace) %{_sysconfdir}/openshift/broker.conf

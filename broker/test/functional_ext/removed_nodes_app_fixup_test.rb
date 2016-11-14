@@ -22,10 +22,19 @@ class RemovedNodesAppFixupTest < ActionDispatch::IntegrationTest
       @appnames[i] = "app#{i}" + gen_uuid[0..9]
     end
     @apps = []
+    @lost_gears = []
   end
 
   def teardown
-    # delete all applications
+    # Remove gears no longer in database
+    @lost_gears.each do |gear_hash|
+      gear = gear_hash[:gear]
+      gear.server_identity = gear_hash[:server_identity]
+      gear.save!
+      gear.destroy_gear
+    end
+
+    # delete all applications from the database
     @apps.each do |app|
       Application.where(_id: app._id).delete
     end
@@ -81,6 +90,7 @@ class RemovedNodesAppFixupTest < ActionDispatch::IntegrationTest
     assert_equal(2, @apps[4].group_instances[0].gears.size)
     assert_equal(true, @apps[4].ha)
     gear = @apps[4].group_instances[0].gears[0]
+    @lost_gears << {:server_identity => gear.server_identity, :gear => gear}
     gear.server_identity = @unresponsive_server
     gear.save!
     gear4 = gear._id
@@ -94,6 +104,7 @@ class RemovedNodesAppFixupTest < ActionDispatch::IntegrationTest
     assert_equal(2, @apps[5].group_instances.size)
     assert_equal(1, @apps[5].group_instances[1].gears.size)
     gear = @apps[5].group_instances[0].gears[0]
+    @lost_gears << {:server_identity => gear.server_identity, :gear => gear}
     gear.server_identity = @unresponsive_server
     gear.save!
     gear5_1 = gear._id
@@ -153,32 +164,14 @@ class RemovedNodesAppFixupTest < ActionDispatch::IntegrationTest
     assert_not_nil usage.end_time
 
     #test_scalable_app_ha_framework_gear_down
-    assert_equal(1, Application.where(canonical_name: @appnames[4].downcase).count)
-    app = Application.find_by(canonical_name: @appnames[4].downcase)
-    assert_equal(1, app.group_instances[0].gears.size)
-    assert_equal(3, UsageRecord.where(user_id: @cu._id, app_name: @appnames[4]).count)
+    assert_equal(0, Application.where(canonical_name: @appnames[4].downcase).count)
+    assert_equal(4, UsageRecord.where(user_id: @cu._id, app_name: @appnames[4]).count)
     assert_equal(2, Usage.where(user_id: @cu._id, app_name: @appnames[4]).count)
-    assert_equal(2, UsageRecord.where(gear_id: gear4).count)
-    assert_equal(1, Usage.where(gear_id: gear4).count)
-    usage = Usage.find_by(gear_id: gear4)
-    assert_not_nil usage.begin_time
-    assert_not_nil usage.end_time
 
     #test_scalable_app_ha_framework_gear_down_db_down
-    assert_equal(1, Application.where(canonical_name: @appnames[5].downcase).count)
-    app = Application.find_by(canonical_name: @appnames[5].downcase)
-    assert_equal(1, app.group_instances.size)
-    assert_equal(1, app.group_instances[0].gears.size)
-    assert_equal(5, UsageRecord.where(user_id: @cu._id, app_name: @appnames[5]).count)
+    assert_equal(0, Application.where(canonical_name: @appnames[5].downcase).count)
+    assert_equal(6, UsageRecord.where(user_id: @cu._id, app_name: @appnames[5]).count)
     assert_equal(3, Usage.where(user_id: @cu._id, app_name: @appnames[5]).count)
-    [gear5_1, gear5_2].each do |gear_id|
-      assert_equal(2, UsageRecord.where(gear_id: gear_id).count)
-      assert_equal(2, UsageRecord.where(gear_id: gear_id).count)
-      assert_equal(1, Usage.where(gear_id: gear_id).count)
-      usage = Usage.find_by(gear_id: gear_id)
-      assert_not_nil usage.begin_time
-      assert_not_nil usage.end_time
-    end
 
     #test_scalable_app_no_ha_scaled_up_head_gear_down
     assert_equal(0, Application.where(canonical_name: @appnames[6].downcase).count)
@@ -192,7 +185,7 @@ class RemovedNodesAppFixupTest < ActionDispatch::IntegrationTest
   end
 
   def repair_apps(confirm=true)
-    output = `oo-broker --non-interactive env "RAILS_ENV=test" oo-admin-repair --removed-nodes --verbose --confirm #{confirm} 2>&1`
+    output = `env "RAILS_ENV=test" oo-admin-repair --removed-nodes --verbose --confirm #{confirm} 2>&1`
     exit_code = $?.exitstatus
     puts output if exit_code != 0
   end

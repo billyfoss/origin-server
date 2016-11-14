@@ -41,7 +41,7 @@ Facter.add(:public_hostname) { setcode { public_hostname } }
 #
 # public_ip assigned to the config specified NIC (default eth0)
 #
-public_nic = get_node_config_value("PUBLIC_NIC", "eth0").gsub(/['"]/,"")
+public_nic = get_node_config_value("EXTERNAL_ETH_DEV", "eth0").gsub(/['"]/,"")
 host_public_ip = `/sbin/ifconfig #{public_nic} | /bin/grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'`.chomp
 Facter.add(:host_ip) { setcode { host_public_ip } }
 
@@ -50,6 +50,8 @@ Facter.add(:host_ip) { setcode { host_public_ip } }
 #
 results = OpenShift::Runtime::Node.node_utilization
 
+Facter.add(:node_disk_free) { setcode { results['node_disk_free'] } }
+Facter.add(:node_total_size) { setcode { results['node_total_size'] } }
 Facter.add(:node_profile) { setcode { results['node_profile'] } }
 Facter.add(:max_active_gears) { setcode { results['max_active_gears'] || '0' } }
 Facter.add(:no_overcommit_active) { setcode { results['no_overcommit_active'] || false } }

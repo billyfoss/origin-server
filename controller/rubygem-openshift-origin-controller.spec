@@ -9,7 +9,7 @@
 
 Summary:       Cloud Development Controller
 Name:          rubygem-%{gem_name}
-Version: 1.31.3
+Version: 1.38.4
 Release:       1%{?dist}
 Group:         Development/Languages
 License:       ASL 2.0
@@ -24,6 +24,7 @@ Requires:      %{?scl:%scl_prefix}rubygems
 Requires:      %{?scl:%scl_prefix}rubygem(state_machine)
 Requires:      %{?scl:%scl_prefix}rubygem(dnsruby)
 Requires:      %{?scl:%scl_prefix}rubygem(httpclient)
+Requires:      %{?scl:%scl_prefix}rubygem-net-ssh
 Requires:      rubygem(openshift-origin-common)
 %if 0%{?fedora}%{?rhel} <= 6
 BuildRequires: %{?scl:%scl_prefix}build
@@ -85,6 +86,185 @@ mkdir -p %{buildroot}/etc/openshift/
 %{gem_dir}/doc/%{gem_name}-%{version}
 
 %changelog
+* Fri Oct 23 2015 Wesley Hearn <whearn@redhat.com> 1.38.4-1
+- Bug 1268080: Handling missing parent domain ops during app op execution
+  (abhgupta@redhat.com)
+
+* Thu Oct 15 2015 Stefanie Forrester <sedgar@redhat.com> 1.38.3-1
+- controller: execute_connections: reformat, comment (miciah.masters@gmail.com)
+- Merge pull request #6271 from Miciah/bug-1261540-controller-
+  execute_connections-nix-client-output (dmcphers+openshiftbot@redhat.com)
+- controller: execute_connections: nix client output (miciah.masters@gmail.com)
+
+* Mon Oct 12 2015 Stefanie Forrester <sedgar@redhat.com> 1.38.2-1
+- gear-placement plugin: provide namespace to plugin (miciah.masters@gmail.com)
+
+* Thu Sep 17 2015 Unknown name 1.38.1-1
+- bump_minor_versions for sprint 103 (sedgar@jhancock.ose.phx2.redhat.com)
+
+* Thu Sep 17 2015 Unknown name 1.37.4-1
+- Merge pull request #6230 from abhgupta/abhgupta-dev
+  (dmcphers+openshiftbot@redhat.com)
+- Fix formatting (dmcphers@redhat.com)
+- Bug 1095610: Validation for zone names (abhgupta@redhat.com)
+- Bug 1234603: spreading gears for an app evenly across zones
+  (abhgupta@redhat.com)
+- Removing oo-broker prefixes for admin commands (abhgupta@redhat.com)
+
+* Mon Aug 17 2015 Wesley Hearn <whearn@redhat.com> 1.37.3-1
+- Bug 1095610: Additional validations for region/zone names  - an alphanumeric
+  character anywhere in the name is now required  - there is no regex
+  validation for zone name during deletion (abhgupta@redhat.com)
+
+* Tue Aug 11 2015 Wesley Hearn <whearn@redhat.com> 1.37.2-1
+- Merge pull request #6213 from abhgupta/bug_1244126
+  (dmcphers+openshiftbot@redhat.com)
+- Fix formatting (dmcphers@redhat.com)
+- Bug 1244126: Allowing 4096 char limit for env variable values
+  (abhgupta@redhat.com)
+- Merge pull request #6182 from tiwillia/bz1197123
+  (dmcphers+openshiftbot@redhat.com)
+- Round up if base filesystem quota is less than 1Gb (tiwillia@redhat.com)
+- Bug 1238816: Fixing mongo query that referenced older app structure
+  (abhgupta@redhat.com)
+- Merge pull request #6164 from tiwillia/bz1191283
+  (dmcphers+openshiftbot@redhat.com)
+- Resolve race condition where cartridges activated within the same second
+  conflicted (tiwillia@redhat.com)
+
+* Thu Jul 02 2015 Wesley Hearn <whearn@redhat.com> 1.37.1-1
+- bump_minor_versions for 2.0.65 (whearn@redhat.com)
+
+* Tue Jun 30 2015 Wesley Hearn <whearn@redhat.com> 1.36.3-1
+- Merge pull request #6121 from kevinearls/ENTESB-2753
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #6047 from Filirom1/patch-4
+  (dmcphers+openshiftbot@redhat.com)
+- Adjust version of unified push cart (dmcphers@redhat.com)
+- Add hidden gear sizes concept (dmcphers@redhat.com)
+- Formatting fixes (dmcphers@redhat.com)
+- oo-admin-ctl-domain uses underscores in command options (tiwillia@redhat.com)
+- Merge pull request #6123 from tiwillia/bz1210489
+  (dmcphers+openshiftbot@redhat.com)
+- Add membership manipulation to oo-admin-ctl-domain (tiwillia@redhat.com)
+- BZ1210489 -  Enable-HA registers routing appliaction DNS twice, breaking
+  functionality for some custom DNS plugins (tiwillia@redhat.com)
+- ENTESB-2753 updated quick start name and location of test data for Fuse
+  smoketest (kevin@kevinearls.com)
+- update mongo read_preference for OpenShift Stats (filirom1@gmail.com)
+
+* Thu May 07 2015 Troy Dawson <tdawson@redhat.com> 1.36.2-1
+- Bug 1218841 - Adding the net-ssh requirement to the controller RPM
+  (bleanhar@redhat.com)
+
+* Fri Apr 10 2015 Wesley Hearn <whearn@redhat.com> 1.36.1-1
+- bump_minor_versions for sprint 62 (whearn@redhat.com)
+
+* Tue Apr 07 2015 Wesley Hearn <whearn@redhat.com> 1.35.4-1
+- Merge pull request #6093 from timothyh/dev/timothyh/rfe/1200123
+  (dmcphers+openshiftbot@redhat.com)
+- Clean up sso_service (thunt@redhat.com)
+- Initial commit of controller hooks for SSO Service (thunt@redhat.com)
+
+* Mon Mar 30 2015 Troy Dawson <tdawson@redhat.com> 1.35.3-1
+- Remove invalid test (dmcphers@redhat.com)
+- Fix typo (dmcphers@redhat.com)
+
+* Thu Mar 19 2015 Adam Miller <admiller@redhat.com> 1.35.2-1
+- Add option to have the default application URL use https - updated
+  (bedin@redhat.com)
+- Update rest-keys tests for ssh key length validation (sdodson@redhat.com)
+- Add net-ssh to controller gem-spec and validator (sdodson@redhat.com)
+- Updated key_content_validator.rb with better exception handling for invalid
+  keys (bedin@redhat.com)
+- Change for SSH minimum key size check (bedin@redhat.com)
+- Card devexp_483 - Obsoleting 10gen cartridge (maszulik@redhat.com)
+
+* Thu Feb 12 2015 Adam Miller <admiller@redhat.com> 1.35.1-1
+- Merge pull request #6066 from abhgupta/abhgupta-dev
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #6058 from Miciah/bug-1186036-routing-spi-send-
+  notifications-on-rollbacks (dmcphers+openshiftbot@redhat.com)
+- Bug 1183048: Fix stale keys/envvars in domains with no apps
+  (abhgupta@redhat.com)
+- Merge pull request #6052 from kwoodson/regions
+  (dmcphers+openshiftbot@redhat.com)
+- Routing SPI: Send notifications on rollbacks (miciah.masters@gmail.com)
+- Removing duplicate servers strings from fields. (kwoodson@redhat.com)
+- bump_minor_versions for sprint 57 (admiller@redhat.com)
+- Add region level reporting to oo-stats (cewong@redhat.com)
+
+* Tue Jan 13 2015 Adam Miller <admiller@redhat.com> 1.34.2-1
+- Bug 1175489: Wrong grep regexp in jbossews (j.hadvig@gmail.com)
+
+* Tue Dec 09 2014 Adam Miller <admiller@redhat.com> 1.34.1-1
+- Merge pull request #5997 from pravisankar/bug-1163893
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1163893 - Encode artifact url for app deployments (rpenta@redhat.com)
+- bump_minor_versions for sprint 55 (admiller@redhat.com)
+
+* Mon Dec 01 2014 Adam Miller <admiller@redhat.com> 1.33.2-1
+- Merge pull request #5947 from sosiouxme/predictable-gear-uuids
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #5971 from nak3/patch01 (dmcphers+openshiftbot@redhat.com)
+- controller: option LIMIT_APP_NAME_CHARS (lmeyer@redhat.com)
+- controller: make gear UUIDs predictable (lmeyer@redhat.com)
+- controller: whitespace fixes (lmeyer@redhat.com)
+- Default configuration parameter to set Private SSL certificates allowed
+  (nakayamakenjiro@gmail.com)
+
+* Mon Nov 24 2014 Adam Miller <admiller@redhat.com> 1.33.1-1
+- bump_minor_versions for sprint 54 (admiller@redhat.com)
+- Add cucumber tests for Unified Push Server cartridge (vvitek@redhat.com)
+
+* Wed Nov 12 2014 Adam Miller <admiller@redhat.com> 1.32.3-1
+- BZ1158704 - Broker fails to create HA DNS entry for HA app
+  (calfonso@redhat.com)
+
+* Wed Nov 12 2014 Adam Miller <admiller@redhat.com> 1.32.2-1
+- Analytics additions (dmcphers@redhat.com)
+
+* Tue Nov 11 2014 Adam Miller <admiller@redhat.com> 1.32.1-1
+- Fix race condition in team creation (decarr@redhat.com)
+- Bug 1158737 - exposes the "ha" attribute on the "application" rest endpoint
+  (contact@fabianofranz.com)
+- Bug 1158737 - exposes DISABLE_HA on broker (contact@fabianofranz.com)
+- bump_minor_versions for sprint 53 (admiller@redhat.com)
+
+* Mon Oct 20 2014 Adam Miller <admiller@redhat.com> 1.31.8-1
+- ssh keys: remove special logins (lmeyer@redhat.com)
+- fix whitespace (lmeyer@redhat.com)
+- app container proxy: Add user login to ssh authorized_keys file
+  (thunt@redhat.com)
+
+* Mon Oct 13 2014 Adam Miller <admiller@redhat.com> 1.31.7-1
+- disable ha feature (rchopra@redhat.com)
+
+* Tue Oct 07 2014 Adam Miller <admiller@redhat.com> 1.31.6-1
+- Merge pull request #5743 from dobbymoodge/node_block_rollback
+  (dmcphers+openshiftbot@redhat.com)
+- node archive: improve doc, config logic (jolamb@redhat.com)
+- broker/node: Add parameter for gear destroy to signal part of gear creation
+  (jolamb@redhat.com)
+- Preventing rollback for PatchUserEnvVarsOp in case of gear creation
+  (abhgupta@redhat.com)
+
+* Thu Oct 02 2014 Adam Miller <admiller@redhat.com> 1.31.5-1
+- Bug 1145132 - Domain validation fails when adding size due to previously
+  removed size (abhgupta@redhat.com)
+
+* Tue Sep 30 2014 Adam Miller <admiller@redhat.com> 1.31.4-1
+- Merge pull request #5845 from mfojtik/wildfly_test_fix
+  (dmcphers+openshiftbot@redhat.com)
+- Adding checks and repair logic for invalid gear sizes in domains
+  (abhgupta@redhat.com)
+- Fixed wildfly cartridge name in cucumber tests (mfojtik@redhat.com)
+- Bug 1146681 - oo-admin-ctl-domain cannot change allowed gear sizes for a
+  mixed-case domain (abhgupta@redhat.com)
+- Merge pull request #5839 from bparees/fix_jboss_test
+  (dmcphers+openshiftbot@redhat.com)
+- use regex handling for jboss string (bparees@redhat.com)
+
 * Wed Sep 24 2014 Adam Miller <admiller@redhat.com> 1.31.3-1
 - Merge pull request #5829 from mfojtik/wildfly_test
   (dmcphers+openshiftbot@redhat.com)

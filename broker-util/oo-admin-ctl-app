@@ -20,6 +20,8 @@ Options:
     Login with OpenShift access (required)
 -a|--app     <application>
     Application name  (alphanumeric) (required)
+-n|--domain <domain>
+    Domain name
 -c|--command <command>
     #{CTL_APP_COMMANDS} (required)
 -b|--bypass
@@ -28,25 +30,25 @@ Options:
     Gear uuid to operate on
 --cartridge
     Cartridge to operate on
---alias 
+--alias
     Alias to operate on
 --multiplier
     Multiplier factor to be set for the cartridge
 -h|--help
     Show Usage info
 USAGE
-  exit 255
 end
 
 opts = GetoptLong.new(
     ["--login",            "-l", GetoptLong::REQUIRED_ARGUMENT],
-    ["--app",              "-a", GetoptLong::REQUIRED_ARGUMENT],    
+    ["--app",              "-a", GetoptLong::REQUIRED_ARGUMENT],
+    ["--domain",           "-n", GetoptLong::REQUIRED_ARGUMENT],
     ["--command",          "-c", GetoptLong::REQUIRED_ARGUMENT],
     ["--gear_uuid",              GetoptLong::REQUIRED_ARGUMENT],
     ["--cartridge",              GetoptLong::REQUIRED_ARGUMENT],
     ["--alias",                  GetoptLong::REQUIRED_ARGUMENT],
     ["--multiplier",             GetoptLong::REQUIRED_ARGUMENT],
-    ["--bypass",           "-b", GetoptLong::NO_ARGUMENT],    
+    ["--bypass",           "-b", GetoptLong::NO_ARGUMENT],
     ["--help",             "-h", GetoptLong::NO_ARGUMENT]
 )
 
@@ -55,21 +57,29 @@ begin
   opts.each{ |k,v| args[k]=v }
 rescue GetoptLong::Error => e
   usage
+  exit 255
 end
 
 login    = args["--login"]
 app_name = args["--app"]
+domain   = args["--domain"]
 command  = args['--command']
 bypass   = args['--bypass']
 gear_uuid = args['--gear_uuid']
 cartridge = args['--cartridge']
-# dup is required here since the alias valiadation in add_alias calls a downcase! 
+# dup is required here since the alias valiadation in add_alias calls a downcase!
 # the string here seems to be frozen and cannot be modified, hence a dup is passed
 server_alias = args['--alias'].dup if args['--alias']
 multiplier = args['--multiplier']
 
-if login.nil? or app_name.nil? or command.nil? or args["--help"]
+if args["--help"]
   usage
+  exit 0
+end
+
+if login.nil? or app_name.nil? or command.nil?
+  usage
+  exit 255
 end
 
 require "#{ENV['OPENSHIFT_BROKER_DIR'] || '/var/www/openshift/broker'}/config/environment"
@@ -88,7 +98,13 @@ unless user
   puts "User #{login} not found."
   exit 1
 end
-app = Application.find_by_user(user, app_name)
+
+if domain
+  app = Application.find_by(:name => app_name, :domain_namespace => domain, :owner_id => user._id)
+else
+  app = Application.find_by_user(user, app_name)
+end
+
 unless app
   puts "Application #{app_name} for user #{login} not found."
   exit 1
@@ -107,17 +123,25 @@ def check_user_response
   end
 end
 
+
+begin
+  ci = app.component_instances.find_by(cartridge_name: cartridge)
+rescue Exception => e
+  puts "Cartridge #{cartridge} not found in the application #{app.name}"
+  exit 1
+end if cartridge
+
 reply = ResultIO.new
 begin
   case command
   when "start"
-    reply.append app.start
+    reply.append app.start(cartridge)
   when "stop"
-    reply.append app.stop  
+    reply.append app.stop(cartridge)
   when "force-stop"
-    reply.append app.stop(nil, true)
+    reply.append app.stop(cartridge, true)
   when "restart"
-    reply.append app.restart  
+    reply.append app.restart(cartridge)
   when "status"
     puts "Application UUID is #{app._id}"
     app.gears.each do |gear|
@@ -151,7 +175,7 @@ begin
           gi.gears.each do |g|
             gear_count += 1
             g.deregister_dns rescue nil
-            g.destroy_gear rescue nil 
+            g.destroy_gear rescue nil
             begin
               UsageRecord.track_usage(user._id, app.name, g._id, UsageRecord::EVENTS[:end], UsageRecord::USAGE_TYPES[:gear_usage], gi.gear_size)
               addtl_fs_gb = gi.addtl_fs_gb
@@ -172,7 +196,7 @@ begin
         Lock.run_in_app_user_lock(owner, app) do
           owner.consumed_gears -= gear_count
           owner.save!
-        end      
+        end
         app.delete
       end
     end
@@ -199,6 +223,15 @@ begin
       else
         cis = g.component_instances
         cis.each do |ci|
+          app.group_overrides.each do |ago|
+            unless ago.nil?
+              if !ago.min_gears.nil? && ci.gears.length <= ago.min_gears
+                puts "Gear #{gear_uuid} cannot be removed as the application " +
+                "has already reached the minimum gear limit of #{ago.min_gears}."
+                exit 1
+              end
+            end
+          end
           if ci.gears.length == 1
             puts "Gear #{gear_uuid} cannot be removed. You need to remove cartridge #{ci.cartridge_name}."
             exit 1
@@ -218,7 +251,7 @@ begin
     app.run_connection_hooks
   when "set-multiplier"
     unless cartridge
-      puts "Cartridge is required to remove-dependency"
+      puts "Cartridge is required to set multiplier"
       exit 1
     end
     unless multiplier
@@ -257,6 +290,7 @@ begin
   else
     puts "Command must be one of: #{CTL_APP_COMMANDS}"
     usage
+    exit 255
   end
 rescue OpenShift::UserException => e
   puts e.message

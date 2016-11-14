@@ -11,6 +11,7 @@ gem 'systemu'
 gem 'mongoid'
 gem 'bson'
 gem 'bson_ext'
+gem 'net-ssh'
 gem 'pry', :require => 'pry' if ENV['PRY']
 gem 'syslog-logger', '~> 1.6.8', :require => false
 # Fedora 19 splits psych out into its own gem.
@@ -59,6 +60,29 @@ else
     end
     gem name, :path => plugin_path
   end
+end
+
+# Load extra gems specified in the broker configuration file
+begin
+  conf_file_path = (ENV['OPENSHIFT_CONF_DIR'] || "/etc/openshift/") + 'broker.conf'
+  if File.exists?(conf_file_path)
+    # Read file as binary to avoid encoding issues when configuration
+    # file is encoded as UTF-8
+    conf_file = File.open(conf_file_path, 'rb')
+    additional_gems = conf_file.read[/^ADDITIONAL_RUBYGEMS\s*=\s*(.+)/, 1]
+    if additional_gems
+      gem_list = additional_gems.split(" ").uniq
+      gem_list.each do |name|
+        gem name.gsub(/["']/, "")
+      end
+    end
+  else
+    $stderr.puts "Could not find broker configuration file at #{conf_file_path}. Skipping loading additional gems."
+  end
+rescue => e
+  $stderr.puts "Could not parse additional gems for broker: #{e.message}"
+  $stderr.puts e.backtrace
+  $stderr.puts "Skipping loading additional gems for broker."
 end
 
 # Bundle edge Rails instead:

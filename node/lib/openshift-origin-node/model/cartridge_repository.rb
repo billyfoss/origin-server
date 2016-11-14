@@ -220,7 +220,7 @@ module OpenShift
 
           FileUtils.rm_r(entry.repository_path)
           parent = Pathname.new(entry.repository_path).parent
-          FileUtils.rm_r(parent) if 0 == parent.children.count
+          FileUtils.rm_r(parent.to_s) if 0 == parent.children.count
         end
 
         entry
@@ -277,6 +277,8 @@ module OpenShift
         raise ArgumentError.new("Illegal path to cartridge repository: '#{directory}'") unless File.directory?(directory)
 
         Dir.glob(PathUtils.join(directory, '*')).each do |path|
+          next unless File.directory?(path)
+
           entries = Dir.entries(path)
           entries.delete_if { |e| e =~ /\A\.\.?\Z/ }
           next unless entries && !entries.empty?
@@ -436,9 +438,11 @@ module OpenShift
           names.each do |name, software_versions|
             lcv = latest_cartridge_version(vendor, name)
             software_versions.keys.sort.reverse.each do |software_version|
-              unless software_versions[software_version][lcv].instance_of?(Hash)
-                latest = software_versions[software_version]['_']
-                cartridges << latest unless latest.instance_of?(Hash)
+              if software_versions[software_version].has_key? lcv
+                unless software_versions[software_version][lcv].instance_of?(Hash)
+                  latest = software_versions[software_version]['_']
+                  cartridges << latest unless latest.instance_of?(Hash)
+                end
               end
             end
           end
@@ -457,7 +461,7 @@ module OpenShift
           names.inject(memo) do |memo, (name, sw_hash)|
             sw_hash.inject(memo) do |memo, (sw_ver, cart_hash)|
               cart_hash.inject(memo) do |memo, (cart_ver, cartridge)|
-                memo << "(#{vendor}, #{name}, #{sw_ver}, #{cart_ver}): " << cartridge.to_s << "\n"
+                cart_ver != "_" ? memo << "(#{vendor}, #{name}, #{sw_ver}, #{cart_ver}): " << cartridge.to_s << "\n" : memo
               end
             end << '>'
           end

@@ -41,4 +41,3 @@ group :assets do
   gem 'therubyracer',  '>= 0.10'
   gem 'sass-twitter-bootstrap',  '2.0.1'
 end
-

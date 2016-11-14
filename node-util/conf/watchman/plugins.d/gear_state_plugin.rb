@@ -98,9 +98,28 @@ class GearStatePlugin < OpenShift::Runtime::WatchmanPlugin
             frontend = OpenShift::Runtime::FrontendHttpServer.new(
                 OpenShift::Runtime::ApplicationContainer.from_uuid(uuid)
             )
-            if frontend.idle?
+
+            # When a gear is idled, the following happens:
+            # 1) the frontend plugin is idled
+            # 2) the gear's state is set to STOPPED
+            # 3) the gear is stopped (cartridge 'control stop')
+            # 4) the gear's state is set to IDLE
+            #
+            # If this plugin sees the gear at either steps 2 or 3 above, it may
+            # incorrectly think there is a mismatch between gear state (STOPPED)
+            # and frontend state (idle). To avoid this plugin from prematurely
+            # calling unidle, make sure that the gear's state has been STOPPED
+            # for at least as long as STATE_CHANGE_DELAY. Also, if there is truly
+            # a mismatch, return after calling unidle and let the next iteration
+            # perform the logic below the idle check.
+            #
+            # https://bugzilla.redhat.com/show_bug.cgi?id=1161165
+            if frontend.idle? and change_state?(uuid)
               @logger.info %Q(watchman gear #{uuid} httpd frontend server updated to reflect 'stopped' state)
               frontend.unidle
+
+              # let the next iteration handle the logic that follows this block
+              return
             end
 
             if pids.empty?
@@ -129,7 +148,7 @@ class GearStatePlugin < OpenShift::Runtime::WatchmanPlugin
               reset_state(uuid)
             end
         end
-      rescue Exception => e
+      rescue => e
         Syslog.info %Q(watchman GearStatePlugin failed for gear #{uuid}: #{e.message}. Processing remaining gears.)
         @logger.info %Q(#{e.message}\n#{e.backtrace.join("\n")})
       end
@@ -174,7 +193,12 @@ class GearStatePlugin < OpenShift::Runtime::WatchmanPlugin
       command = command.join(' ')
 
       # skip everything owned by root (for speed) and not a "daemon" (we can be fooled here)
-      next unless uid != '0' && ppid == '1'
+      if uid == '0' || ppid != '1'
+        # bz1134686 - don't skip jenkins builder slaves
+        if command !~ /jenkins\/slave.jar/
+          next
+        end
+      end
 
       # bz1133629
       # skip haproxy and logshifter related processes

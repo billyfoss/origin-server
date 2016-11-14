@@ -37,7 +37,6 @@ To disable cgroups for all gears:
   -h|--help                             Print this message
 
 USAGE
-  exit 255
 end
 
 require 'rubygems'
@@ -46,7 +45,7 @@ opts = GetoptLong.new(
     ["--with-container-uuid", "-c", GetoptLong::REQUIRED_ARGUMENT],
     ["--with-all-containers", "-a", GetoptLong::NO_ARGUMENT],
     ["--debug",               "-d", GetoptLong::NO_ARGUMENT],
-    ["--help",                "-?", GetoptLong::NO_ARGUMENT]
+    ["--help",                "-h", GetoptLong::NO_ARGUMENT]
 )
 
 
@@ -58,6 +57,7 @@ begin
     case k
     when '--help'
       usage
+      exit 0
     when '--with-container-uuid'
       container_uuid = v
     when '--with-all-containers'
@@ -66,14 +66,17 @@ begin
       $oo_debug = true
     else
       usage
+      exit 255
     end
   end
 rescue GetoptLong::Error => e
   usage
+  exit 255
 end
 
 unless all_containers or container_uuid
   usage
+  exit 255
 end
 
 begin

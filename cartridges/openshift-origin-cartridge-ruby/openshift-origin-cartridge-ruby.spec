@@ -9,7 +9,7 @@
 %global httpdconfdir /etc/openshift/cart.conf.d/httpd/ruby
 
 Name:          openshift-origin-cartridge-ruby
-Version: 1.28.1
+Version: 1.32.1
 Release:       1%{?dist}
 Summary:       Ruby cartridge
 Group:         Development/Languages
@@ -109,6 +109,59 @@ done
 %attr(0755,-,-) %{httpdconfdir}
 
 %changelog
+* Thu Jul 02 2015 Wesley Hearn <whearn@redhat.com> 1.32.1-1
+- bump_minor_versions for 2.0.65 (whearn@redhat.com)
+
+* Wed Jul 01 2015 Wesley Hearn <whearn@redhat.com> 1.31.3-1
+- Bump cartridge versions for Sprint 64 (j.hadvig@gmail.com)
+
+* Tue Jun 30 2015 Wesley Hearn <whearn@redhat.com> 1.31.2-1
+- Incorrect self-documents link in README.md for markers and cron under
+  .openshift (bparees@redhat.com)
+
+* Thu Mar 19 2015 Adam Miller <admiller@redhat.com> 1.31.1-1
+- bump_minor_versions for sprint 60 (admiller@redhat.com)
+
+* Wed Feb 25 2015 Adam Miller <admiller@redhat.com> 1.30.5-1
+- Bump cartridge versions for Sprint 58 (maszulik@redhat.com)
+
+* Fri Feb 20 2015 Adam Miller <admiller@redhat.com> 1.30.4-1
+- updating links for developer resources in initial pages for cartridges
+  (cdaley@redhat.com)
+
+* Tue Feb 17 2015 Adam Miller <admiller@redhat.com> 1.30.3-1
+- Merge pull request #6072 from soltysh/bug1191517
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1191517 - Passenger is not hiding ErrorPages even when production is
+  specified. Added additional logic to force hiding ErrorPages when not in
+  development. (maszulik@redhat.com)
+
+* Thu Feb 12 2015 Adam Miller <admiller@redhat.com> 1.30.2-1
+- Revert "Bug 1183135 - Added ror40 bin directory to ruby-2.0
+  OPENSHIFT_RUBY_PATH_ELEMENT and ror40 gems dirs to GEM_PATH."
+  (soltysh@gmail.com)
+- Bug 1183135 - Added ror40 bin directory to ruby-2.0
+  OPENSHIFT_RUBY_PATH_ELEMENT and ror40 gems dirs to GEM_PATH.
+  (maszulik@redhat.com)
+
+* Tue Dec 09 2014 Adam Miller <admiller@redhat.com> 1.30.1-1
+- bump_minor_versions for sprint 55 (admiller@redhat.com)
+
+* Wed Dec 03 2014 Adam Miller <admiller@redhat.com> 1.29.3-1
+- Cart version bump for Sprint 54 (vvitek@redhat.com)
+
+* Mon Nov 24 2014 Adam Miller <admiller@redhat.com> 1.29.2-1
+- Merge pull request #5949 from VojtechVitek/upgrade_scrips
+  (dmcphers+openshiftbot@redhat.com)
+- Clean up & unify upgrade scripts (vvitek@redhat.com)
+
+* Tue Nov 11 2014 Adam Miller <admiller@redhat.com> 1.29.1-1
+- bump_minor_versions for sprint 53 (admiller@redhat.com)
+- Version bump for the sprint 52 (mfojtik@redhat.com)
+
+* Mon Oct 20 2014 Adam Miller <admiller@redhat.com> 1.28.2-1
+- cart => cartridge (jphager2@gmail.com)
+
 * Fri Aug 08 2014 Adam Miller <admiller@redhat.com> 1.28.1-1
 - bump_minor_versions for sprint 49 (admiller@redhat.com)
 

@@ -1,6 +1,6 @@
-Summary:       Openshift PAM module
+Summary:       OpenShift PAM module
 Name:          pam_openshift
-Version: 1.12.1
+Version: 1.14.1
 Release:       1%{?dist}
 Group:         System Environment/Base
 License:       GPLv2
@@ -14,7 +14,7 @@ BuildRequires: libselinux-devel
 BuildRequires: libattr-devel
 
 %description
-The Openshift PAM module configures proper SELinux context for
+The OpenShift PAM module configures proper SELinux context for
 processes in a session.
 
 %prep
@@ -41,6 +41,19 @@ install -D -m 644 oo-namespace-init.8 %{buildroot}/%{_mandir}/man8/oo-namespace-
 %attr(0750,root,root) %{_sbindir}/oo-namespace-init
 
 %changelog
+* Thu Mar 19 2015 Adam Miller <admiller@redhat.com> 1.14.1-1
+- bump_minor_versions for sprint 60 (admiller@redhat.com)
+
+* Thu Feb 19 2015 Adam Miller <admiller@redhat.com> 1.13.2-1
+- Fixing typos (dmcphers@redhat.com)
+
+* Tue Nov 11 2014 Adam Miller <admiller@redhat.com> 1.13.1-1
+- bump_minor_versions for sprint 53 (admiller@redhat.com)
+
+* Mon Oct 20 2014 Adam Miller <admiller@redhat.com> 1.12.2-1
+- Bug 1146750 - Ensure permissions on temporary directories (jhonce@redhat.com)
+- Bug 1146750 - Ensure permissions on temporary directories (jhonce@redhat.com)
+
 * Wed Apr 09 2014 Adam Miller <admiller@redhat.com> 1.12.1-1
 - bump_minor_versions for sprint 43 (admiller@redhat.com)
 

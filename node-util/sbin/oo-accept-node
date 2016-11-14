@@ -178,6 +178,10 @@ def user_fail(uuid, msg)
   do_fail(msg)
 end
 
+def do_warn(msg)
+    eputs("WARNING: " + msg)
+end
+
 def do_fail(msg)
     eputs("FAIL: " + msg)
     $STATUS += 1
@@ -204,6 +208,7 @@ def load_node_conf
     do_fail("GEAR_BASE_DIR does not exist or is not a directory: #{$GEAR_BASE_DIR}") unless File.exists? $GEAR_BASE_DIR
 
     $EXTERNAL_ETH_DEV = ($CONF.get('EXTERNAL_ETH_DEV') or 'eth0')
+    $TRAFFIC_CONTROL_DEVS = ($CONF.get('TRAFFIC_CONTROL_DEVS') or $EXTERNAL_ETH_DEV).gsub(/\s+/m, ' ').strip.split(' ')
 
     verbose("loading resource limit file #{$RESOURCE_LIMITS_FILE}")
     do_fail("No resource limits file: #{$RESOURCE_LIMITS_FILE}") unless File.exists? $RESOURCE_LIMITS_FILE
@@ -241,7 +246,7 @@ def load_users
   # Narrow the window where USERS, TC_DATA and ALL_QUOTAS can reflect
 # the system in different states.
   $START_TIME=Time.now
-  $TC_DATA = %x[/sbin/tc clas show dev #{$EXTERNAL_ETH_DEV}].split("\n").grep(/parent/)
+  $TC_DATA = %x[/sbin/tc clas show dev #{$TRAFFIC_CONTROL_DEVS.first}].split("\n").grep(/parent/)
   $ALL_QUOTAS = %x[/usr/sbin/repquota -a].split("\n")
 
   # Aggregate per-user hash of lscgroup data. In some cases, multiple subsystems
@@ -261,32 +266,32 @@ def validate_env
   if ENV[$SEBOOL_LIST].nil?
       $SEBOOL_LIST=DEFAULT_SEBOOL_LIST
   else
-      eputs "WARNING: ENV overrides SEBOOL_LIST"
+      do_warn "ENV overrides SEBOOL_LIST"
   end
 
   if ENV[$PACKAGES].nil?
       $PACKAGES=DEFAULT_PACKAGES
   else
-      eputs "WARNING: ENV overrides PACKAGES"
+      do_warn "ENV overrides PACKAGES"
   end
 
   if ENV[$SERVICES].nil?
       $SERVICES=DEFAULT_SERVICES
   else
-      eputs "WARNING: ENV overrides SERVICES"
+      do_warn "ENV overrides SERVICES"
   end
 
   if ENV[$SERVICE_CONTEXTS].nil?
       $SERVICE_CONTEXTS=DEFAULT_SERVICE_CONTEXTS
   else
-      eputs "WARNING: ENV overrides SERVICE_CONTEXTS"
+      do_warn "ENV overrides SERVICE_CONTEXTS"
   end
 
 
   if ENV[$MINSEM].nil?
       $MINSEM=DEFAULT_MINSEM
   else
-      eputs "WARNING: ENV overrides MINSEM"
+      do_warn "ENV overrides MINSEM"
   end
 end
 
@@ -355,7 +360,7 @@ def check_selinux()
         do_fail("selinux boolean #{name} should be #{value}") unless result =~ /#{name} --> #{value}/
     }
 
-    do_fail('invalid selinux labels in OPENSHIFT_DIR $GEAR_BASE_DIR') unless %x[/sbin/restorecon -n -v #{$GEAR_BASE_DIR}] =~ //
+    do_fail("invalid selinux labels in $GEAR_BASE_DIR #{$GEAR_BASE_DIR}") if %x[/sbin/restorecon -n -v #{$GEAR_BASE_DIR} 2>&1].include?("restorecon reset")
 
     # This will likely only detect the effects of a full relabel but it's
     # better than nothing.  My unscientific tests shows that checking 100 gears
@@ -435,12 +440,12 @@ end
 
 
 #
-# Check gear processes belong to cgroups
+# Check gear threads belong to cgroups
 #
-def check_cgroup_procs
-    verbose("checking cgroups processes")
+def check_cgroup_tasks
+    verbose("checking cgroups tasks")
 
-    ### Gather current procs running ###
+    ### Gather current threads running ###
     min_uid = $CONF.get('GEAR_MIN_UID').to_i
     max_uid = $CONF.get('GEAR_MAX_UID').to_i
 
@@ -454,10 +459,11 @@ def check_cgroup_procs
 
     verbose("determining node uid range: #{min_uid} to #{max_uid}")
 
-    all_user_procs = %x[/bin/ps -e -o uid,pid].split("\n")
-    ps_procs = Hash.new{|hash, key| hash[key] = Array.new}
-    all_user_procs.each do |line|
-        uid,pid = line.split[0,2]
+    # Bug 1067107 - Check tids against tasks instead of pids against cgroup procs
+    all_user_threads = %x[/bin/ps -e H -o uid,pid,tid].split("\n")
+    ps_threads = Hash.new{|hash, key| hash[key] = Hash.new}
+    all_user_threads.each do |line|
+        uid,pid,tid = line.split[0,3]
         uid = uid.to_i
 
         if uid.between?(min_uid, max_uid)
@@ -469,34 +475,34 @@ def check_cgroup_procs
             end
 
             uname = passwd_lines[0].name
-            ps_procs[uname] += [pid]
-            ps_procs[uname].uniq!
+            ps_threads[uname][tid] = pid
         end
     end
 
-    ### Gather cgroup procs ###
-    cgroup_procs = Hash.new{|hash, key| hash[key] = Hash.new{|hash, key| hash[key] = Array.new}}
+    ### Gather cgroup tasks ###
+    tasks = Hash.new{|hash, key| hash[key] = Hash.new{|hash, key| hash[key] = Array.new}}
 
     # Support mounting cgroup controllers under /cgroup/all or
     # /cgroup/<controller>
-    Dir.glob("/cgroup/*/openshift/*/cgroup.procs").each do |file|
+    Dir.glob("/cgroup/*/openshift/*/tasks").each do |file|
         _, _, controller, _, uuid, _ = file.split("/")
         lines = []
         IO.foreach(file).each { |line| lines << line.strip }
-        cgroup_procs[controller][uuid] = lines
+        tasks[controller][uuid] = lines
     end
 
     ### Compare ###
-    ps_procs.each do |uuid,procs|
-        cgroup_procs.each do |controller,controller_procs|
-            missing = procs - controller_procs[uuid]
-            missing.each do |pid|
-                # ensure the process is still running and not defunct before failing
-                # this fixes both the transient process and the defunct process
+    ps_threads.each do |uuid,threads|
+        tasks.each do |controller,controller_tasks|
+            missing = threads.keys - controller_tasks[uuid]
+            missing.each do |tid|
+                # ensure the thread is still running and not defunct before failing
+                # this fixes both the transient threads and the defunct thread
                 # detection problems
                 begin
-                    if File.read("/proc/#{pid}/status") !~ /^State:\s+Z/
-                        user_fail(uuid, "#{uuid} has a process missing from cgroups: #{pid} cgroups controller: #{controller}")
+                    pid = threads[tid]
+                    if File.read("/proc/#{pid}/task/#{tid}/status") !~ /^State:\s+Z/
+                        user_fail(uuid, "#{uuid} has a thread: tid:#{tid}, pid:#{pid} missing from cgroups controller: #{controller}")
                     end
                 rescue Errno::ENOENT
                 end
@@ -517,21 +523,22 @@ def check_tc_config
 
     verbose("checking presence of tc qdisc")
     qdiscresponse="qdisc htb 1: root"
-
-    result = %x[/sbin/tc qdisc show dev #{$EXTERNAL_ETH_DEV} | /bin/grep -q "#{qdiscresponse}"]
-    if $?.exitstatus != 0
-        do_fail("tc htb qdisc not configured")
-        $TC_PASS=false
-    else
-        verbose("checking for cgroup filter")
-        if %x[/sbin/tc filter show dev #{$EXTERNAL_ETH_DEV} | /bin/grep 'cgroup handle' | /usr/bin/uniq | /usr/bin/wc -l].strip.to_i < 1
-            do_fail("no cgroup filter configured")
+    $TRAFFIC_CONTROL_DEVS.each do |tc_dev|
+        result = %x[/sbin/tc qdisc show dev #{tc_dev} | /bin/grep -q "#{qdiscresponse}"]
+        if $?.exitstatus != 0
+            do_fail("tc htb qdisc not configured")
             $TC_PASS=false
         else
-            verbose("checking presence of tc classes")
-            if %x[/sbin/tc class show dev #{$EXTERNAL_ETH_DEV} | /bin/grep 'class htb' | /usr/bin/wc -l].strip.to_i < 1
-                do_fail("no htb classes configured")
+            verbose("checking for cgroup filter")
+            if %x[/sbin/tc filter show dev #{tc_dev} | /bin/grep 'cgroup handle' | /usr/bin/uniq | /usr/bin/wc -l].strip.to_i < 1
+                do_fail("no cgroup filter configured")
                 $TC_PASS=false
+            else
+                verbose("checking presence of tc classes")
+                if %x[/sbin/tc class show dev #{tc_dev} | /bin/grep 'class htb' | /usr/bin/wc -l].strip.to_i < 1
+                    do_fail("no htb classes configured")
+                    $TC_PASS=false
+                end
             end
         end
     end
@@ -539,9 +546,15 @@ end
 
 def check_quotas
     verbose("checking filesystem quotas")
-    oo_device=%x[/bin/df -P #{$GEAR_BASE_DIR} | /usr/bin/tail -1].split[0]
-    oo_mount=%x[/bin/df -P #{$GEAR_BASE_DIR} | /usr/bin/tail -1 | /usr/bin/tr -s ' '].split[5]
-    fs_type=%x[/bin/df -TP #{oo_mount} | tail -1 2>&1].split[1]
+    oo_device, fs_type, _, _, _, _, oo_mount =
+      %x[/bin/df -PT #{$GEAR_BASE_DIR}].split("\n").last.split
+    awk = %[{ if ($1 == "#{oo_device}" && $3 == "#{oo_mount}") { print $6 } }]
+    fs_options = %x[mount | /bin/awk '#{awk}'].
+      split("\n").last.sub(/^\((.*)\)$/, '\1') rescue ""
+    if fs_options.match /loop=([^,]+)/
+      oo_device = $1
+      do_warn "#{oo_mount} is a loop mount (loop device: #{oo_device}).  Using a loop mount may reduce performance."
+    end
     if fs_type=="xfs"
       unless %x[/usr/sbin/repquota -v #{oo_mount} | /bin/grep "Accounting.*Enforcement"].strip == "Accounting: ON; Enforcement: ON"
           do_fail "quotas are not enabled on #{oo_mount} (#{oo_device})"
@@ -602,7 +615,7 @@ def check_users
       user_fail(user.name, "user #{user.name} must have 1 tc class entry: actual=#{tc_results.length}") if tc_results.length != 1
     end
 
-    results = $ALL_QUOTAS.grep(/#{user.name}/)
+    results = $ALL_QUOTAS.grep(/^#{user.name}/)
     if results.length == 0 ||
         results[0].split[4].to_i == 0 ||
         results[0].split[7].to_i == 0
@@ -634,6 +647,7 @@ def check_system_httpd_configs
   return unless http_plugins.include?('openshift-origin-frontend-nodejs-websocket')
 
   mod_rewrite = http_plugins.include? 'openshift-origin-frontend-apache-mod-rewrite'
+  mod_vhost = http_plugins.include? 'openshift-origin-frontend-apache-vhost'
   ['aliases.db', 'idler.db', 'nodes.db', 'sts.db'].each do |db|
     begin
       File.open(File.join($CONF.get('OPENSHIFT_HTTP_CONF_DIR'), db))
@@ -694,47 +708,25 @@ def check_system_httpd_configs
       has_framework = false
 
       carts = Dir.glob(File.join(u.dir, '*')).select { |p|
-        not File.symlink?(p)
-      }.map { |p|
-        File.basename(p)
-      }.map { |p|
-        cpath = nil
-        cp = File.join($CONF.get('CARTRIDGE_BASE_PATH'), p)
-        cpath = cp if File.exists?(cp)
-        cpath
-      }.select { |p|
-        not p.nil?
+        File.directory?(p) and not File.symlink?(p)
       }.each { |p|
         ['metadata', 'info'].each { |mp|
           mfile = File.join(p, mp, 'manifest.yml')
           next unless File.exists?(mfile)
           begin
-            manifest = YAML.load(File.read(mfile), :safe => true)
-
-            manifest["Categories"] ||= []
-            manifest["Endpoints"]  ||= []
-
-            if manifest["Categories"].include?('web_framework')
-              manifest["Endpoints"].each do |endpoint|
-                endpoint["Protocols"] ||= ["http"]
-
-                if endpoint["Mappings"]
-                  endpoint["Mappings"].each do |mapping|
-
-                    mapping["Options"] ||= {}
-
-                    if mapping["Options"]["websocket"]
-                      endpoint["Protocols"] << "ws"
-                    end
-
-                    has_framework = true if endpoint["Protocols"].include?("http")
-                    has_websocket = true if endpoint["Protocols"].include?("ws")
-                  end
-                end
+            manifest = OpenShift::Runtime::Manifest.new(mfile, nil, :file)
+            if manifest.categories.include?('web_framework')
+              manifest.endpoints.each do |endpoint|
+                has_framework = true
+                endpoint.mappings.each do |mapping|
+                  if mapping.options["websocket"]
+                    has_websocket = true
+                  end if mapping.options
+                end if endpoint.mappings
               end
             end
-
-          rescue
+          rescue => e
+            puts "#{e.class} error reading #{mfile}: #{e.message}"
           end
         }
       }
@@ -759,6 +751,29 @@ def check_system_httpd_configs
       httpconfs['geardb.json'].delete_if { |k, v| v["fqdn"] == fqdn }
     rescue
     end
+
+    if mod_vhost && has_framework
+      vhost_file = Dir.glob(File.join($CONF.get('OPENSHIFT_HTTP_CONF_DIR'), "#{u.name}_*_0_*.conf"))[0]
+      if vhost_file
+        vhost_dir = vhost_file.gsub(/(\.conf)$/, "").sub("_0_", "_")
+        if File.directory?(vhost_dir)
+          vhost_dir_files = Dir.glob(File.join(vhost_dir, "*.conf"))
+          unless vhost_dir_files.empty?
+            proxy_file = File.join(vhost_dir, "599999_element-.conf")
+            unless vhost_dir_files.include?(proxy_file)
+              user_fail(u.name, "No vhost reverse proxy mappings exist for gear: #{u.name}")
+            end
+          else
+            user_fail(u.name, "No vhost endpoint mappings exist for gear: #{u.name}")
+          end
+        else
+          user_fail(u.name, "No vhost configuration directory exists for gear: #{u.name}")
+        end
+      else
+        user_fail(u.name, "No vhost base configuration exists for gear: #{u.name}")
+      end
+    end
+
   end
 
   fail_dns_names = Hash.new
@@ -789,6 +804,8 @@ def check_system_httpd_configs
   end
 
   Dir.foreach($CONF.get('OPENSHIFT_HTTP_CONF_DIR')) { |cfile|
+    next unless File.size?(cfile)
+
     next if cfile[0,1] == "."
     next if cfile[-5,5] != ".conf"
     if $USERS.select { |u| u.name == cfile[0..cfile.index('_')-1]}.empty?
@@ -964,7 +981,7 @@ if __FILE__ == $0
       check_service_contexts
       check_semaphores
       check_cgroup_config
-      check_cgroup_procs
+      check_cgroup_tasks
       check_tc_config
       check_quotas
       check_users

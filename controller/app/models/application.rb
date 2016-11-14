@@ -115,6 +115,7 @@ class Application
     format:   {with: APP_NAME_REGEX, message: "Application name must contain only alphanumeric characters (a-z, A-Z, or 0-9)."},
     length:   {maximum: APP_NAME_MAX_LENGTH, minimum: 0, message: "Application name must be a minimum of 1 and maximum of #{APP_NAME_MAX_LENGTH} characters."}
   validate :extended_validator
+  validate :name_plus_domain
 
   # Returns a map of field to error code for validation failures
   # * 105: Invalid application name
@@ -176,6 +177,14 @@ class Application
     notify_observers(:validate_application)
   end
 
+  def name_plus_domain
+    return if persisted? # only check at creation - old apps are grandfathered
+    charlimit = Rails.application.config.openshift[:limit_app_name_chars]
+    if charlimit > 0 && (name + domain.namespace).length > charlimit
+      errors.add :name,
+        "Name '#{name}' and domain namespace '#{domain.namespace}' cannot add up to more than #{charlimit} characters."
+    end
+  end
   ##
   # Helper for test cases to create the {Application}
   #
@@ -205,7 +214,7 @@ class Application
       ha: opts[:available],
       builder_id: opts[:builder_id],
       user_agent: opts[:user_agent],
-      init_git_url: opts[:initial_git_url],
+      init_git_url: opts[:initial_git_url]
     )
     app.config.each do |k, default|
       v = opts[k.to_sym]
@@ -969,6 +978,24 @@ class Application
   end
 
   ##
+  # Update the application's group overrides such that a scalable application ceases to be HA
+  # This broadly means setting the 'min' of web_proxy sparse cart to 1
+  def disable_ha
+    raise OpenShift::UserException.new("HA is not active for this application.") if !self.ha
+    raise OpenShift::UserException.new("HA operations are allowed only on scalable applications") if not self.scalable
+
+    component_instance = self.component_instances.detect{ |i| i.cartridge.is_web_proxy? } or
+      raise OpenShift::UserException.new("Cannot disable HA because there is no web cartridge.")
+
+    Lock.run_in_app_lock(self) do
+      pending_op_groups << DisableAppHaOpGroup.new(user_agent: self.user_agent)
+      result_io = ResultIO.new
+      self.run_jobs(result_io)
+      result_io
+    end
+  end
+
+  ##
   # Create and add group overrides to update scaling and filesystem limits for a the {GroupInstance} hosting a {ComponentInstance}
   # @param component_instance [ComponentInstance] The component instance to use when creating the override definition
   # @param scale_from [Integer] Minimum scale for the component
@@ -1083,6 +1110,14 @@ class Application
   # @return [String]
   def fqdn(gear_name = nil)
     "#{gear_name || canonical_name}-#{domain_namespace}.#{Rails.configuration.openshift[:domain_suffix]}"
+  end
+
+  ##
+  # Returns the application URL with the proper protocol (http vs https) based on configuration
+  # @return [String]
+  def app_url
+    proto = Rails.application.config.openshift[:app_advertise_https] ? "https" : "http"
+    "#{proto}://#{fqdn()}/"
   end
 
   ##
@@ -1531,67 +1566,94 @@ class Application
   end
 
   def execute_connections
-    if self.scalable
-      connections, _, _ = elaborate(self.cartridges, self.group_overrides)
-      set_connections(connections)
+    return if not self.scalable
 
-      Rails.logger.debug "Running publishers"
-      handle = RemoteJob.create_parallel_job
-      #publishers
-      self.connections.each do |conn|
-        pub_inst = self.component_instances.find(conn.from_comp_inst_id)
-        tag = conn._id.to_s
+    # Initialize self.connections.
+    connections, _, _ = elaborate(self.cartridges, self.group_overrides)
+    set_connections(connections)
 
-        pub_inst.gears.each do |gear|
-          input_args = [gear.name, self.domain_namespace, gear.uuid]
+    # Run the publish hooks on each gear and get their output.
+    Rails.logger.debug "Running publishers"
+    handle = RemoteJob.create_parallel_job
+    self.connections.each do |conn|
+      pub_inst = self.component_instances.find(conn.from_comp_inst_id)
+      tag = conn._id.to_s
+
+      pub_inst.gears.each do |gear|
+        input_args = [gear.name, self.domain_namespace, gear.uuid]
+        unless gear.removed
+          job = gear.get_execute_connector_job(pub_inst, conn.from_connector_name, conn.connection_type, input_args)
+          RemoteJob.add_parallel_job(handle, tag, gear, job)
+        end
+      end
+    end
+
+    pub_out = {}
+    RemoteJob.execute_parallel_jobs(handle)
+    RemoteJob.get_parallel_run_results(handle) do |tag, gear_id, output, status|
+      # Ignore the hook's output if it did not complete successfully.
+      next if status != 0
+
+      # Filter out CLIENT_* lines that the runtime may have added.
+      # For example, execute_parallel_action calls report_quota,
+      # which may add "CLIENT_MESSAGE Warning:" lines about quota
+      # exhaustion to the output.
+      re = /^CLIENT_(MESSAGE|RESULT|DEBUG|ERROR|INTERNAL_ERROR)/
+      output = output.lines.reject {|line| line =~ re}.join
+
+      conn_type = self.connections.find { |c| c._id.to_s == tag}.connection_type
+      if conn_type.start_with?("ENV:")
+        pub_out[tag] = {} if pub_out[tag].nil?
+
+        # Output from an ENV: publish hook includes one or more
+        # environment variable assignments of the form "var=value\n".
+        # Copy them verbatim for subscribe hooks.
+        pub_out[tag][gear_id] = output
+      else
+        pub_out[tag] = [] if pub_out[tag].nil?
+
+        # Output from a non-ENV: publish hook may be terminated by
+        # "\n", but we do not want to include the "\n" in the input to
+        # the subscribe hook.
+        output.rstrip!
+
+        # Output from a non-ENV: publish hook generally includes some
+        # gear-specific parameter.  Subscribe hooks should expect to
+        # receive a list of these parameters formatted as
+        # "'gearuuid'='parameter'" (with the single-quotes but without
+        # the double-quotes) joined by spaces.
+        pub_out[tag].push("'#{gear_id}'='#{output}'")
+      end
+    end
+
+    # Run the subscribe hooks, providing them the output of the publish
+    # hooks as their input.
+    Rails.logger.debug "Running subscribers"
+    handle = RemoteJob.create_parallel_job
+    self.connections.each do |conn|
+      pub_inst = self.component_instances.find(conn.from_comp_inst_id)
+      sub_inst = self.component_instances.find(conn.to_comp_inst_id)
+      tag = ""
+
+      unless pub_out[conn._id.to_s].nil?
+        if conn.connection_type.start_with?("ENV:")
+          input_to_subscriber = pub_out[conn._id.to_s]
+        else
+          input_to_subscriber = Shellwords::shellescape(pub_out[conn._id.to_s].join(' '))
+        end
+
+        Rails.logger.debug "Output of publisher - '#{pub_out}'"
+        sub_inst.gears.each do |gear|
+          input_args = [gear.name, self.domain_namespace, gear.uuid, input_to_subscriber]
           unless gear.removed
-            job = gear.get_execute_connector_job(pub_inst, conn.from_connector_name, conn.connection_type, input_args)
+            job = gear.get_execute_connector_job(sub_inst, conn.to_connector_name, conn.connection_type, input_args, pub_inst.cartridge_name)
             RemoteJob.add_parallel_job(handle, tag, gear, job)
           end
         end
       end
-      pub_out = {}
-      RemoteJob.execute_parallel_jobs(handle)
-      RemoteJob.get_parallel_run_results(handle) do |tag, gear_id, output, status|
-        conn_type = self.connections.find { |c| c._id.to_s == tag}.connection_type
-        if status==0
-          if conn_type.start_with?("ENV:")
-            pub_out[tag] = {} if pub_out[tag].nil?
-            pub_out[tag][gear_id] = output
-          else
-            pub_out[tag] = [] if pub_out[tag].nil?
-            pub_out[tag].push("'#{gear_id}'='#{output}'")
-          end
-        end
-      end
-      Rails.logger.debug "Running subscribers"
-      #subscribers
-      handle = RemoteJob.create_parallel_job
-      self.connections.each do |conn|
-        pub_inst = self.component_instances.find(conn.from_comp_inst_id)
-        sub_inst = self.component_instances.find(conn.to_comp_inst_id)
-        tag = ""
-
-        unless pub_out[conn._id.to_s].nil?
-          if conn.connection_type.start_with?("ENV:")
-            input_to_subscriber = pub_out[conn._id.to_s]
-          else
-            input_to_subscriber = Shellwords::shellescape(pub_out[conn._id.to_s].join(' '))
-          end
-
-          Rails.logger.debug "Output of publisher - '#{pub_out}'"
-          sub_inst.gears.each do |gear|
-            input_args = [gear.name, self.domain_namespace, gear.uuid, input_to_subscriber]
-            unless gear.removed
-              job = gear.get_execute_connector_job(sub_inst, conn.to_connector_name, conn.connection_type, input_args, pub_inst.cartridge_name)
-              RemoteJob.add_parallel_job(handle, tag, gear, job)
-            end
-          end
-        end
-      end
-      RemoteJob.execute_parallel_jobs(handle)
-      Rails.logger.debug "Connections done"
     end
+    RemoteJob.execute_parallel_jobs(handle)
+    Rails.logger.debug "Connections done"
   end
 
   #private
@@ -1673,7 +1735,13 @@ class Application
         if gear
           pi = PortInterface.create_port_interface(gear, component_id, *command_item[:args])
           gear.port_interfaces.push(pi)
-          pi.publish_endpoint(self)
+          # If available, use the public external ip address provided by the cartridge command.
+          # It is possible that if the NOTIFY_ENDPOINT_CREATE command was generated during the
+          # move of a gear (as opposed to the creation of a gear), the address from the gear
+          # object may not yet be updated. We prefer to use the address specified in the command
+          # itself.
+          public_ip = command_item[:args][0]["external_address"] || gear.get_public_ip_address
+          pi.publish_endpoint(self, public_ip)
         end
       when "NOTIFY_ENDPOINT_DELETE"
         if gear
@@ -1889,7 +1957,7 @@ class Application
 
       reserve_uid_op = ReserveGearUidOp.new(gear_id: gear_id, gear_size: gear_size, region_id: region_id, prereq: maybe_notify_app_create_op + [init_gear_op._id.to_s])
 
-      create_gear_op = CreateGearOp.new(gear_id: gear_id, prereq: [reserve_uid_op._id.to_s], retry_rollback_op: reserve_uid_op._id.to_s)
+      create_gear_op = CreateGearOp.new(gear_id: gear_id, prereq: [reserve_uid_op._id.to_s], retry_rollback_op: reserve_uid_op._id.to_s, is_group_creation: !is_scale_up)
       # this flag is passed to the node to indicate that an sshkey is required to be generated for this gear
       # currently the sshkey is being generated on the app dns gear if the application is scalable
       # we are assuming that haproxy will also be added to this gear
@@ -1901,8 +1969,12 @@ class Application
                            gear_size: gear_size, prereq: [create_gear_op._id.to_s])
 
       register_dns_op = RegisterDnsOp.new(gear_id: gear_id, prereq: [create_gear_op._id.to_s])
-
-      ops.push(init_gear_op, reserve_uid_op, create_gear_op, register_dns_op)
+      register_sso_op = RegisterSsoOp.new(gear_id: gear_id, prereq: [register_dns_op._id.to_s])
+      ops.push(init_gear_op, reserve_uid_op, create_gear_op, register_dns_op, register_sso_op)
+      # Only register the routing dns here on application creation:
+      if self.component_instances == []
+        ops.push(RegisterRoutingDnsOp.new(prereq: [register_sso_op._id.to_s])) if self.ha and Rails.configuration.openshift[:manage_ha_dns]
+      end
 
       if additional_filesystem_gb != 0
         # FIXME move into CreateGearOp
@@ -1937,19 +2009,20 @@ class Application
     # Add and/or push user env vars when this is not an app create or user_env_vars are specified
     user_vars_op_id = nil
     # FIXME this condition should be stronger (only fired when env vars are specified OR other gears already exist)
+    # If this is a new group instance creation (gear creation and not a scale up), we can skip rollback
     if maybe_notify_app_create_op.empty? || user_env_vars.present?
       prereq = gear_id_prereqs[app_dns_gear_id].nil? ? [ops.last._id.to_s] : [gear_id_prereqs[app_dns_gear_id]]
-      op = PatchUserEnvVarsOp.new(group_instance_id: ginst_id, user_env_vars: user_env_vars, push_vars: true, prereq: prereq)
+      op = PatchUserEnvVarsOp.new(group_instance_id: ginst_id, user_env_vars: user_env_vars, push_vars: true,
+                                  skip_rollback: !is_scale_up, prereq: prereq)
       ops << op
       user_vars_op_id = op._id.to_s
     end
 
+    # Since this is a new gear creation, we can skip rollback for some operations
     prereq_op_id = prereq_op._id.to_s rescue nil
-    # since this component add operation is part of a new gear creation, we can skip rollback for everything other that gear creation
-    is_gear_creation = true
     add, usage = calculate_add_component_ops(gear_comp_specs, comp_spec_gears, ginst_id, deploy_gear_id, gear_id_prereqs, component_ops,
                                              is_scale_up, (user_vars_op_id || prereq_op_id), init_git_url,
-                                             app_dns_gear_id, is_gear_creation)
+                                             app_dns_gear_id, true)
     ops.concat(add)
     track_usage_ops.concat(usage)
 
@@ -1963,7 +2036,8 @@ class Application
     gear_ids.each do |gear_id|
       deleting_app = true if self.gears.find(gear_id).app_dns
       destroy_gear_op = DestroyGearOp.new(gear_id: gear_id)
-      deregister_dns_op = DeregisterDnsOp.new(gear_id: gear_id, prereq: [destroy_gear_op._id.to_s])
+      deregister_sso_op = DeregisterSsoOp.new(gear_id: gear_id, prereq: [destroy_gear_op._id.to_s])
+      deregister_dns_op = DeregisterDnsOp.new(gear_id: gear_id, prereq: [deregister_sso_op._id.to_s])
       unreserve_uid_op = UnreserveGearUidOp.new(gear_id: gear_id, prereq: [deregister_dns_op._id.to_s])
       delete_gear_op = DeleteGearOp.new(gear_id: gear_id, prereq: [unreserve_uid_op._id.to_s])
       track_usage_op = TrackUsageOp.new(user_id: self.domain.owner._id, parent_user_id: self.domain.owner.parent_user_id,
@@ -1971,7 +2045,7 @@ class Application
                           usage_type: UsageRecord::USAGE_TYPES[:gear_usage],
                           prereq: [delete_gear_op._id.to_s])
 
-      pending_ops.push(destroy_gear_op, deregister_dns_op, unreserve_uid_op, delete_gear_op, track_usage_op)
+      pending_ops.push(destroy_gear_op, deregister_sso_op, deregister_dns_op, unreserve_uid_op, delete_gear_op, track_usage_op)
 
       if additional_filesystem_gb != 0
         pending_ops <<  TrackUsageOp.new(user_id: self.domain.owner._id, parent_user_id: self.domain.owner.parent_user_id,
@@ -2024,7 +2098,7 @@ class Application
             status = true
           else
             # does removing a gear with this sparse cart still maintain the multiplier?
-            # ensuring a float arithmetic to make correct comparisons 
+            # ensuring a float arithmetic to make correct comparisons
             status = (cur_total_gears -1) / ((cur_sparse_gears - 1) * 1.0) <= multiplier
           end
           status
@@ -2891,6 +2965,7 @@ class Application
       case key.class
       when UserSshKey
         key_attrs["name"] = key.cloud_user._id.to_s + "-" + key_attrs["name"]
+        key_attrs["login"] = key.cloud_user.login
       when SystemSshKey
         key_attrs["name"] = "domain-" + key_attrs["name"]
       when ApplicationSshKey

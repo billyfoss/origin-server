@@ -54,13 +54,12 @@ Options:
 -v|--verbose
     Print information about each check being performed
 -l|--level [0, 1]
-    Level '0' is default, and checks to see if any gears are present in mongo but don't exist on the nodes and vice-versa.
-    Level '1' performs checks for consumed_gears count mismatches, application data integrity in mongo, and checks for unused and unreserved gear UIDs
+    Level '0' is default, and checks to see if any gears are present in the datastore but don't exist on the nodes and vice-versa.
+    Level '1' performs checks for consumed_gears count mismatches, application data integrity, user plan and usage consistency, and checks for unused and unreserved gear UIDs
     #{usage_additional_plugins}
 -h|--help
     Show Usage info
 USAGE
-  exit 255
 end
 
 args = {}
@@ -73,11 +72,15 @@ begin
   opts.each{ |k,v| args[k]=v }
 rescue GetoptLong::Error => e
   usage
+  exit 255
 end
 
 level = args["--level"].to_i || 0
 $verbose = args["--verbose"]
-usage if args["--help"]
+if args["--help"]
+  usage
+  exit 0
+end
 
 def datastore_has_gear?(gear_uuid, app_id=nil)
   # specifying the app_id first if present, this makes better use of the indexes and performance is better
@@ -135,13 +138,14 @@ $datastore_hash.each do |gear_uuid, gear_info|
   server_identity = gear_info['server_identity']
   app_id = gear_info['app_id']
 
-  if (current_time - creation_time) > 600
+  if (current_time - creation_time) > 21600
     if !node_hash.has_key? gear_uuid
       gear_si_present = (gear_hash.has_key?server_identity)
       datastore_si_present = (datastore_has_gear?(gear_uuid, app_id))
       if gear_si_present and datastore_si_present
           puts "#{gear_uuid}...FAIL" if $verbose
           print_message "Gear #{gear_uuid} does not exist on any node"
+          print_message "Please see https://access.redhat.com/site/solutions/712593 for more information."
       elsif datastore_si_present
         puts "#{gear_uuid}...FAIL" if $verbose
         non_responding_nodes[server_identity] = 0 unless non_responding_nodes.has_key? server_identity
@@ -159,6 +163,7 @@ puts "Checked application gears on nodes in #{(Time.now - current_time).to_i} se
 # print error messages for any non-responding nodes
 non_responding_nodes.each do |server_identity, gear_count|
   print_message "The node #{server_identity} expected to contain #{gear_count} gears wasn't returned from mcollective for the gear list"
+  print_message "Make sure the node #{server_identity} exists and that the ruby193-mcollective service is running."
 end
 
 puts "Checking node gears in application database" if $verbose
@@ -167,8 +172,11 @@ node_hash.each do |gear_uuid, gear_info|
   datastore_gear_info = $datastore_hash[gear_uuid]
   if !datastore_gear_info
     if !datastore_has_gear?(gear_uuid)
+      server_identity = gear_info[0]
       puts "#{gear_uuid}...FAIL" if $verbose
-      print_message "Gear #{gear_uuid} exists on node #{gear_info[0]} (uid: #{gear_info[1]}) but does not exist in mongo database"
+      print_message "Gear #{gear_uuid} exists on node #{server_identity} (uid: #{gear_info[1]}) but does not exist in mongo database"
+      print_message "To fix this issue, remove the gear by running the oo-devel-node command from the node '#{server_identity}':"
+      print_message "oo-devel-node app-destroy --with-container-uuid #{gear_uuid}"
     end
   elsif !datastore_gear_info['gear_uid'].nil?
     begin
@@ -194,7 +202,7 @@ if level >= 1
   puts "Checked ssh keys inconsistencies in #{(Time.now - current_time).to_i} seconds\n\n"
 
   current_time = Time.now
-  run :find_stale_sshkeys_and_envvars
+  run :find_stale_sshkeys
   puts "Checked stale ssh keys in #{(Time.now - current_time).to_i} seconds\n\n"
 
   current_time = Time.now
@@ -204,6 +212,10 @@ if level >= 1
   current_time = Time.now
   run :find_domain_gear_sizes_inconsistencies
   puts "Checked domain allowed gear sizes inconsistencies in #{(Time.now - current_time).to_i} seconds\n\n"
+
+  current_time = Time.now
+  run :find_user_gear_sizes_inconsistencies
+  puts "Checked user gear sizes inconsistencies in #{(Time.now - current_time).to_i} seconds\n\n"
 
   current_time = Time.now
   run :find_app_gear_usage_record_inconsistencies
@@ -222,7 +234,7 @@ if level >= 1
   puts "Checked usage record inconsistencies in #{(Time.now - current_time).to_i} seconds\n\n"
 
   current_time = Time.now
-  run :find_user_plan_inconsistencies 
+  run :find_user_plan_inconsistencies
   puts "Checked user plan inconsistencies in #{(Time.now - current_time).to_i} seconds\n\n"
 end
 
@@ -235,7 +247,7 @@ if $total_errors == 0
   errcode = 0
 else
   print_message "FAILED", true
-  puts "Please refer to the oo-admin-repair tool to resolve some of these inconsistencies."
+  puts "Please refer to the oo-admin-repair tool man page to resolve some of these inconsistencies if no suggestion was provided with any error message(s)."
   errcode = 1
 end
 exit errcode

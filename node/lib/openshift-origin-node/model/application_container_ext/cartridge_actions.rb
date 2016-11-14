@@ -1004,6 +1004,9 @@ module OpenShift
             end
 
             result[:status] = RESULT_SUCCESS
+          rescue ::OpenShift::Runtime::Utils::ShellExecutionException => e
+            result[:status] = RESULT_FAILURE
+            result[:errors] << "Error activating gear: #{e.message}\n#{e.stdout}\n#{e.stderr}\n"
           rescue Exception => e
             result[:status] = RESULT_FAILURE
             result[:errors] << "Error activating gear: #{e.message}"
@@ -1251,7 +1254,7 @@ module OpenShift
           rescue => e
             result[:status] = RESULT_FAILURE
             result[:errors] ||= []
-            result[:errors] << "An exception occured restarting the gear: #{e.message}"
+            result[:errors] << "An exception occurred restarting the gear: #{e.message}"
             result[:errors] += e.backtrace
           end
 
@@ -1460,14 +1463,7 @@ module OpenShift
           end
 
           args = generate_update_cluster_control_args(updated_entries)
-          begin
-            @cartridge_model.do_control('update-cluster', proxy_cart, args: args)
-          rescue ::OpenShift::Runtime::Utils::ShellExecutionException => e
-            logger.info "BZ1025043: Gear #{self.uuid} - got exception running update-cluster for the proxy: #{e.message}"
-            listing, _, _ = Utils.oo_spawn("ls -laZ #{gear_env['OPENSHIFT_PRIMARY_CARTRIDGE_DIR']}/metadata")
-            logger.info "BZ1025043: Gear #{self.uuid} - directory listing of primary cartridge directory:\n#{listing}"
-            raise
-          end
+          @cartridge_model.do_control('update-cluster', proxy_cart, args: args)
         end
 
         def sync_git_repo(ssh_urls, gear_env)
@@ -1576,7 +1572,7 @@ module OpenShift
               status: RESULT_FAILURE,
               proxy_gear_uuid: proxy_gear.uuid,
               messages: [],
-              errors: ["An exception occured updating the proxy status: #{e.message}\n#{e.backtrace.join("\n")}"]
+              errors: ["An exception occurred updating the proxy status: #{e.message}\n#{e.backtrace.join("\n")}"]
             }
           end
 
@@ -1604,7 +1600,7 @@ module OpenShift
               proxy_gear_uuid: self.uuid,
               target_gear_uuid: target_gear,
               messages: [],
-              errors: ["An exception occured updating the proxy status: #{e.message}\n#{e.backtrace.join("\n")}"]
+              errors: ["An exception occurred updating the proxy status: #{e.message}\n#{e.backtrace.join("\n")}"]
             }
           end
 

@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# This script checks the status of a host that is running an Openshift Origins
+# This script checks the status of a host that is running a OpenShift Origin
 # Broker service.
 #
 # Check that the broker components are installed and communicating properly
@@ -71,6 +71,8 @@ else
 fi
 
 BROKER_REST_API_BASE="https://localhost/broker/rest/"
+
+DATABASE_UNREACHABLE=false
 
 function safe_bundle() {
     bundle exec "$@"
@@ -139,6 +141,58 @@ function probe_version() {
       fail "broker Rails app root ${OSO_BROKER_ROOT} does not exist: no broker package"
     else
       verbose "Broker package is: $BROKER_RPM"
+    fi
+}
+
+function check_mongo_connectivity() {
+    # To avoid hanging when trying to load the broker rails environment while
+    #   mongo databases are unreachable, we check beforehand.
+
+    verbose "checking Mongo host connectivity"
+    MONGO_HOST=$(grep -e "^MONGO_HOST_PORT=" $BROKER_CONF | cut -d= -f2)
+
+    # If the configuration entry includes commas, there is a mongo replica set
+    if [[ $MONGO_HOST == *,* ]]
+    then
+      unreachable_count=0
+      replica_count=0
+
+      for mongo_replicant in $(echo $MONGO_HOST | sed s/,/\ /g)
+      do
+        ((replica_count++))
+        # Note: Remove unwanted single or double qoutes before parsing using tr command
+        host=$(echo $mongo_replicant | cut -d: -f1 | tr -d \'\")
+        port=$(echo $mongo_replicant | cut -d: -f2 | tr -d \'\")
+        timeout 1 bash -c "cat </dev/null > /dev/tcp/$host/$port" &> /dev/null
+
+        if [ $? != 0 ]
+        then
+          ((unreachable_count++))
+          verbose "Unable to connect to Mongo replicant: $mongo_replicant"
+        else
+          verbose "Connected to Mongo replicant: $mongo_replicant"
+        fi
+      done
+
+      if [ $unreachable_count == $replica_count ]
+      then
+        fail "Unable to connect to all Mongo replicants: $MONGO_HOST"
+        DATABASE_UNREACHABLE=true
+      else
+        verbose "At least one Mongo replicant is listening on the specified host and port."
+      fi
+    else
+      host=$(echo $MONGO_HOST | cut -d\: -f1 | tr -d \'\")
+      port=$(echo $MONGO_HOST | cut -d\: -f2 | tr -d \'\")
+      timeout 1 bash -c "cat </dev/null > /dev/tcp/$host/$port"
+
+      if [ $? != 0 ]
+      then
+        fail "Unable to connect to Mongo host: $MONGO_HOST"
+        DATABASE_UNREACHABLE=true
+      else
+        verbose "Connected to Mongo host: $MONGO_HOST"
+      fi
     fi
 }
 
@@ -223,6 +277,12 @@ function load_application_values() {
   # if there are any multiline values, we're in trouble.
   # Also if there are any errors this won't work. Which is why we
   # can't get all the values in one go - some exist conditionally.
+
+  if $DATABASE_UNREACHABLE
+  then
+    fail "Unable to load broker application values, broker database is unreachable."
+    return 1
+  fi
 
   ruby_program=""
   local keys=( ${!APP_VALUE_MAP[@]} )
@@ -334,7 +394,7 @@ EOF
 # ============================================================================
 #
 # Configuration and Variables
-# 
+#
 # ============================================================================
 
 #
@@ -484,7 +544,7 @@ function check_mongo_login() {
     then
         ssl_opt="--ssl"
     fi
-    mongo $1/$2 --username $3 --password $ssl_opt<<EOF 2>&1 >/dev/null 
+    mongo $1/$2 --username $3 --password $ssl_opt<<EOF 2>&1 >/dev/null
 $4
 exit
 EOF
@@ -826,19 +886,19 @@ function check_dns_bind() {
     dns_bind_update_record ${APP_VALUES[DNS_AUTH]} ${APP_VALUES[DNS_SERVER]} "${APP_VALUES[DNS_KEYNAME]}" "${APP_VALUES[DNS_KEYVAL]}" "${APP_VALUES[DNS_KEYALGORITHM]}" "${APP_VALUES[DNS_KRB_KEYTAB]}" "${APP_VALUES[DNS_KRB_PRINCIPAL]}" add txt testrecord.${APP_VALUES[DNS_SUFFIX]} this_is_a_test
 
     # verify that the record is there
-    if host -t txt testrecord.${APP_VALUES[DNS_SUFFIX]} ${APP_VALUES[DNS_SERVER]} >/dev/null
+    if host -t txt testrecord.${APP_VALUES[DNS_SUFFIX]}. ${APP_VALUES[DNS_SERVER]} >/dev/null
     then
         verbose "txt record successfully added"
     else
-        fail "txt record testrecord.${APP_VALUES[DNS_SUFFIX]} does not resolve on server ${APP_VALUES[DNS_SERVER]}"
+        fail "txt record testrecord.${APP_VALUES[DNS_SUFFIX]}. does not resolve on server ${APP_VALUES[DNS_SERVER]}"
     fi
 
     # remove it.
-    dns_bind_update_record ${APP_VALUES[DNS_AUTH]} ${APP_VALUES[DNS_SERVER]} "${APP_VALUES[DNS_KEYNAME]}" "${APP_VALUES[DNS_KEYVAL]}" "${APP_VALUES[DNS_KEYALGORITHM]}" "${APP_VALUES[DNS_KRB_KEYTAB]}" "${APP_VALUES[DNS_KRB_PRINCIPAL]}" delete txt testrecord.${APP_VALUES[DNS_SUFFIX]} 
+    dns_bind_update_record ${APP_VALUES[DNS_AUTH]} ${APP_VALUES[DNS_SERVER]} "${APP_VALUES[DNS_KEYNAME]}" "${APP_VALUES[DNS_KEYVAL]}" "${APP_VALUES[DNS_KEYALGORITHM]}" "${APP_VALUES[DNS_KRB_KEYTAB]}" "${APP_VALUES[DNS_KRB_PRINCIPAL]}" delete txt testrecord.${APP_VALUES[DNS_SUFFIX]}
     # verify that the record is removed
-    if host -t txt testrecord.${APP_VALUES[DNS_SUFFIX]} ${APP_VALUES[DNS_SERVER]} >/dev/null
+    if host -t txt testrecord.${APP_VALUES[DNS_SUFFIX]}. ${APP_VALUES[DNS_SERVER]} >/dev/null
     then
-        fail "txt record testrecord.${APP_VALUES[DNS_SUFFIX]} still resolves on server ${APP_VALUES[DNS_SERVER]}"
+        fail "txt record testrecord.${APP_VALUES[DNS_SUFFIX]}. still resolves on server ${APP_VALUES[DNS_SERVER]}"
     else
         verbose "txt record successfully deleted"
     fi
@@ -975,13 +1035,14 @@ STATUS=0
 probe_version
 check_packages $PACKAGES
 check_ruby_requirements $OSO_RUBY_LIBS
-if [ -z "$container" ]; then 
+if [ -z "$container" ]; then
   #Can't check selinux/iptables if we are running inside a container
   check_selinux_enforcing
   check_selinux_booleans
   check_firewall
 fi
 check_services
+check_mongo_connectivity
 
 # we will fill APP_VALUES with output from ruby commands corresponding to the map
 declare -A APP_VALUES

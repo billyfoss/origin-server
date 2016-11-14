@@ -42,12 +42,10 @@ Options:
 -h|--help
     Show Usage info
 USAGE
-  exit 255
 end
 
 opts = GetoptLong.new(
     ["--clear",            "-c", GetoptLong::NO_ARGUMENT],
-    ["--console",            GetoptLong::NO_ARGUMENT],
     ["--quiet",            "-q", GetoptLong::NO_ARGUMENT],
     ["--help",             "-h", GetoptLong::NO_ARGUMENT]
 )
@@ -57,10 +55,17 @@ begin
   opts.each{ |k,v| args[k]=v }
 rescue GetoptLong::Error => e
   usage
+  exit 255
 end
 
-if args["--help"] || (STDIN.tty? && args.empty?)
+if args["--help"]
   usage
+  exit 0
+end
+
+if STDIN.tty? && args.empty?
+  usage
+  exit 255
 end
 
 if args['--clear']

@@ -194,7 +194,7 @@ class OODiag
     @project_is[:origin] = !(@project_is[:enterprise] || @project_is[:online])
     # detect whether the ruby193 SCL is in play.
     system "scl enable ruby193 echo >& /dev/null"
-    @scl_prefix = $?.success? ? "ruby193-" : "" 
+    @scl_prefix = $?.success? ? "ruby193-" : ""
     # detect whether we use service or systemctl
     @use_systemctl = executable? "systemctl"
 
@@ -561,7 +561,7 @@ class OODiag
     a_profile_for.each do |node,profile|
       # check that all nodes are in a district
       if !d_profile_for[node]
-        do_warn <<-NODIST 
+        do_warn <<-NODIST
           Node host #{node} with profile '#{profile}' is not a member of any district.
           Please add it to a district with oo-admin-ctl-district.
         NODIST
@@ -692,13 +692,13 @@ class OODiag
     verbose "checking for presence of gem-installed rubygems"
 
     # list out all gem directories and find those without RPM ownership
-    gemdirs = `gem environment gempath`.chomp.split(':').
+    disown = `gem environment gempath`.chomp.split(':').
       map {|dir| dir + "/specifications"}.
       select {|dir| File.exists? dir}.
-      map {|dir| dir + "/*.gemspec"}
-    verbose "looking in #{gemdirs.join ' '}"
-    disown = `ls #{gemdirs.join ' '} | xargs -n 1 rpm -qf`.
-      split("\n").select {|line| line.end_with? "not owned by any package"}
+      map {|dir| dir + "/*.gemspec"}.
+      tap {|globs| puts "looking in #{globs.join ' '}"}.
+      map {|glob| Dir.glob(glob)}.flatten(1).
+      select {|file| `rpm -qf #{file}`.chomp.end_with? 'not owned by any package'}
     return if disown.empty?
 
     do_warn <<-"NOOO"
@@ -931,7 +931,7 @@ class OODiag
      if have_system_config_firewall
        do_warn <<-WARN
          Using system-config-firewall and lokkit with OpenShift is not recommended.
-         To continue using lokkit please ensure the following custom rules are 
+         To continue using lokkit please ensure the following custom rules are
          installed in #{conf_file}:
 
          --custom-rules=ipv4:filter:/etc/openshift/system-config-firewall-compat
@@ -994,9 +994,9 @@ class OODiag
     if bname && nname && bname != nname
       # broker and node both installed, node may be stealing traffic
       do_warn <<-CONFLICT
-        /etc/httpd/conf.d/000001_openshift_origin_node_servername.conf defines a 
+        /etc/httpd/conf.d/000001_openshift_origin_node_servername.conf defines a
         ServerName #{nname} which may cause the node intercept requests by that name
-        intended for the broker. Please reconfigure with the same ServerName as the 
+        intended for the broker. Please reconfigure with the same ServerName as the
         one in /etc/httpd/conf.d/000002_openshift_origin_broker_servername.conf
       CONFLICT
     end
@@ -1204,6 +1204,39 @@ class OODiag
 
   end
 
+  def test_auth_keys_salt_failure
+    skip_test unless @is_broker
+
+    log_dir = "/var/log/openshift/broker/"
+
+    if Rails.env.development?
+      mode = "development"
+    elsif Rails.env.production?
+      mode = "production"
+    else
+      mode = "test"
+    end
+
+    msg_log = `grep 'Broker key authentication failed' #{log_dir + mode}.log`
+
+    unless msg_log.empty?
+      do_warn <<-AUTH_ERROR
+      Detected an '401 Unauthorized' error on the #{mode} log. This error
+      may indicate inconsistent authentication keys or salts among brokers.
+      Please follow below steps to fix the issue:
+      1. Manually synchronize the authentication keys and salt in broker's
+      configuration
+      2. Then use 'oo-admin-broker-auth' to resync all credentials on
+      existing gears
+
+      Note: This error message may continue to be displayed even if the issue
+      is already resolved as the error message is still in the #{mode} log.
+      The error will be cleared after the next log rotation.
+      AUTH_ERROR
+    end
+  end
+
+  # Test certificate from the broker
   def test_broker_certificate
     skip_test unless @is_broker
 
@@ -1241,14 +1274,57 @@ class OODiag
         config_files = `grep -l -e "^[[:blank:]]*ServerName[[:blank:]]*#{badname}" /etc/httpd/conf.d/*.conf`
         config_files.each_line do |config_file|
           do_warn <<-CONFLICT
-            #{config_file.chomp} 
-            defines ServerName as #{badname}.  This does not match the certificate common name of 
-            #{commonname}.  
+            #{config_file.chomp}
+            defines ServerName as #{badname}.  This does not match the certificate common name of
+            #{commonname}.
             This can cause errors when client tools try to connect to the broker.
           CONFLICT
         end
       end
     end
+  end
+
+  # Test certificate from the node
+  def test_node_certificate
+    skip_test unless @is_node
+
+    # Retrieve the SSL cert from Apache
+    response = `curl -k -s -v https://localhost/ -o /dev/null 2>&1`
+    if $? != 0
+      do_fail <<-CANNOTCONNECT
+        An error arose while trying to connect to the SSL reverse proxy.  curl returned with
+        #{response.strip.empty? ? "no output." : "the following output:\n" + response}
+
+        Please check whether the httpd service is running.
+      CANNOTCONNECT
+      return
+    end
+
+    issuer = response.slice(/^\*\s*issuer: .*$/).gsub(/^\*\s*issuer: /,"")
+    subject = response.slice(/^\*\s*subject: .*$/).gsub(/^\*\s*subject: /,"")
+    if subject == issuer
+      do_warn "Using a self-signed certificate for the node"
+    end
+
+    broker_host_env = File.read("/etc/openshift/env/OPENSHIFT_BROKER_HOST")
+
+    # Retrieve the SSL cert from broker_host_env
+    broker_response = `curl -k -s -v https://#{broker_host_env.chomp}/ -o /dev/null 2>&1`
+    if $? != 0
+      do_fail <<-CANNOTCONNECT
+        Attempted to connect to #{broker_host_env} but failed. curl returned with
+        #{broker_response.strip.empty? ? "no output." : "the following output:\n" + broker_response}
+
+        Please check whether the httpd service on #{broker_host_env} is running.
+      CANNOTCONNECT
+      return
+    end
+
+    # Get SSL cert's issuer
+    broker_issuer = broker_response.slice(/^\*\s*issuer: .*$/).gsub(/^\*\s*issuer: /,"")
+
+    # Check to see if SSL cert issuer from current node and BROKER_HOST match
+    do_warn "SSL cert issuer doesn't match between localhost and #{broker_host_env} defined in /etc/openshift/env/OPENSHIFT_BROKER_HOST" if broker_issuer != issuer
   end
 
   def test_abrt_addon_python
@@ -1289,7 +1365,7 @@ class OODiag
   def test_yum_configuration
     if executable? "oo-admin-yum-validator"
       output = `oo-admin-yum-validator --report-all 2>&1`
-      $?.success? or do_warn <<-YUM 
+      $?.success? or do_warn <<-YUM
         oo-admin-yum-validator reported some possible problems
         with your package source configuration:
 --------------------------------------------------------------
@@ -1360,9 +1436,9 @@ class OODiag
         The following configuration files have names and locations indicating
         that the apache user should be able to read them, but are not readable
         by the apache user:
-          
+
           #{unreadable * "\n          "}
-          
+
         #{ broker_unreadable.empty? ? "" : "The broker and console services may malfunction without read access to these files." }
         #{ node_unreadable.empty? ? "" : "The host httpd server may malfunction without read access to these files."}
       UNREADABLE

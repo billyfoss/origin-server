@@ -2,7 +2,7 @@
 
 Summary:       Provides jenkins-1.x support
 Name:          openshift-origin-cartridge-jenkins
-Version: 1.25.1
+Version: 1.29.1
 Release:       1%{?dist}
 Group:         Development/Languages
 License:       ASL 2.0
@@ -10,10 +10,11 @@ URL:           http://www.openshift.com
 Source0:       http://mirror.openshift.com/pub/openshift-origin/source/%{name}/%{name}-%{version}.tar.gz
 Requires:      rubygem(openshift-origin-node)
 #https://issues.jenkins-ci.org/browse/JENKINS-15047
-Requires:      java >= 1.6
+Requires:      java >= 1.7
 Requires:      jenkins
 Requires:      jenkins-plugin-openshift
 Requires:      openshift-origin-node-util
+Requires:      unzip
 Provides:      openshift-origin-cartridge-jenkins-1.4 = 2.0.0
 Obsoletes:     openshift-origin-cartridge-jenkins-1.4 <= 1.99.9
 BuildArch:     noarch
@@ -49,6 +50,51 @@ chkconfig jenkins off
 %doc %{cartridgedir}/LICENSE
 
 %changelog
+* Thu Sep 17 2015 Unknown name 1.29.1-1
+- bump_minor_versions for sprint 103 (sedgar@jhancock.ose.phx2.redhat.com)
+
+* Tue Aug 11 2015 Wesley Hearn <whearn@redhat.com> 1.28.2-1
+- Require java7 for latest jenkins (tiwillia@redhat.com)
+
+* Thu Jul 02 2015 Wesley Hearn <whearn@redhat.com> 1.28.1-1
+- bump_minor_versions for 2.0.65 (whearn@redhat.com)
+
+* Wed Jul 01 2015 Wesley Hearn <whearn@redhat.com> 1.27.3-1
+- Bump cartridge versions for Sprint 64 (j.hadvig@gmail.com)
+
+* Tue Jun 30 2015 Wesley Hearn <whearn@redhat.com> 1.27.2-1
+- Incorrect self-documents link in README.md for markers and cron under
+  .openshift (bparees@redhat.com)
+
+* Tue Dec 09 2014 Adam Miller <admiller@redhat.com> 1.27.1-1
+- bump_minor_versions for sprint 55 (admiller@redhat.com)
+
+* Wed Dec 03 2014 Adam Miller <admiller@redhat.com> 1.26.4-1
+- Cart version bump for Sprint 54 (vvitek@redhat.com)
+
+* Mon Dec 01 2014 Adam Miller <admiller@redhat.com> 1.26.3-1
+- Unify `-x' shell attribute in cartridge scripts (vvitek@redhat.com)
+
+* Mon Nov 24 2014 Adam Miller <admiller@redhat.com> 1.26.2-1
+- Merge pull request #5949 from VojtechVitek/upgrade_scrips
+  (dmcphers+openshiftbot@redhat.com)
+- Clean up & unify upgrade scripts (vvitek@redhat.com)
+
+* Tue Nov 11 2014 Adam Miller <admiller@redhat.com> 1.26.1-1
+- Merge pull request #5931 from bparees/clear_jenkins_upgrade
+  (dmcphers+openshiftbot@redhat.com)
+- remove old upgrade logic (bparees@redhat.com)
+- Jenkins cart: Add "unzip" dependency (jolamb@redhat.com)
+- Merge pull request #5898 from mfojtik/jenkins_ssh
+  (dmcphers+openshiftbot@redhat.com)
+- bump_minor_versions for sprint 53 (admiller@redhat.com)
+- Version bump for the sprint 52 (mfojtik@redhat.com)
+- Bug 1153557 - Disable strict known_hosts checking in Jenkins
+  (mfojtik@redhat.com)
+
+* Tue Oct 07 2014 Adam Miller <admiller@redhat.com> 1.25.2-1
+- Add markers to disable bad ciphers for rhel6.6 (bparees@redhat.com)
+
 * Fri Aug 08 2014 Adam Miller <admiller@redhat.com> 1.25.1-1
 - bump_minor_versions for sprint 49 (admiller@redhat.com)
 

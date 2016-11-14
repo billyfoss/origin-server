@@ -9,7 +9,7 @@
 
 Summary:       Provides Node.js support
 Name:          openshift-origin-cartridge-nodejs
-Version: 1.30.1
+Version: 1.33.1
 Release:       1%{?dist}
 Group:         Development/Languages
 License:       ASL 2.0
@@ -74,6 +74,40 @@ find versions/ -name .gitkeep -delete
 %doc %{cartridgedir}/LICENSE
 
 %changelog
+* Thu Jul 02 2015 Wesley Hearn <whearn@redhat.com> 1.33.1-1
+- bump_minor_versions for 2.0.65 (whearn@redhat.com)
+
+* Wed Jul 01 2015 Wesley Hearn <whearn@redhat.com> 1.32.3-1
+- Bump cartridge versions for Sprint 64 (j.hadvig@gmail.com)
+
+* Tue Jun 30 2015 Wesley Hearn <whearn@redhat.com> 1.32.2-1
+- Incorrect self-documents link in README.md for markers and cron under
+  .openshift (bparees@redhat.com)
+- Merge pull request #6144 from Miciah/delete-bogus-nodejs_context-invocation
+  (dmcphers+openshiftbot@redhat.com)
+- Delete bogus nodejs_context invocation (miciah.masters@gmail.com)
+- Bug 1221836 - Add check if the HTTP port is open for nodejs cartridge
+  (mfojtik@redhat.com)
+
+* Thu Mar 19 2015 Adam Miller <admiller@redhat.com> 1.32.1-1
+- bump_minor_versions for sprint 60 (admiller@redhat.com)
+
+* Wed Feb 25 2015 Adam Miller <admiller@redhat.com> 1.31.3-1
+- Bump cartridge versions for Sprint 58 (maszulik@redhat.com)
+
+* Fri Feb 20 2015 Adam Miller <admiller@redhat.com> 1.31.2-1
+- updating links for developer resources in initial pages for cartridges
+  (cdaley@redhat.com)
+
+* Tue Dec 09 2014 Adam Miller <admiller@redhat.com> 1.31.1-1
+- bump_minor_versions for sprint 55 (admiller@redhat.com)
+
+* Wed Dec 03 2014 Adam Miller <admiller@redhat.com> 1.30.3-1
+- Cart version bump for Sprint 54 (vvitek@redhat.com)
+
+* Mon Nov 24 2014 Adam Miller <admiller@redhat.com> 1.30.2-1
+- Clean up & unify upgrade scripts (vvitek@redhat.com)
+
 * Thu Aug 21 2014 Adam Miller <admiller@redhat.com> 1.30.1-1
 - bump_minor_versions for sprint 50 (admiller@redhat.com)
 

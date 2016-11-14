@@ -10,7 +10,6 @@ module OpenShift
         include Kerberos
         include SecureShell
 
-        USER_VARIABLE_MAX_COUNT      = 50
         USER_VARIABLE_NAME_MAX_SIZE  = 128
         USER_VARIABLE_VALUE_MAX_SIZE = 512
         RESERVED_VARIABLE_NAMES      = %w(OPENSHIFT_PRIMARY_CARTRIDGE_DIR OPENSHIFT_NAMESPACE PATH IFS USER SHELL HOSTNAME LOGNAME)
@@ -116,13 +115,13 @@ module OpenShift
         # Public: Add user access by SSH to a gear
         #
         # Examples
-        # container.add_ssh_key("alongstring", "ssh-rsa", "a users key")
+        # container.add_ssh_key("alongstring", "ssh-rsa", "a users key", "testuser")
         #
-        # container.add_ssh_key("testuser@EXAMPLE.COM", "krb5-principal")
+        # container.add_ssh_key("testuser@EXAMPLE.COM", "krb5-principal", "testuser")
         #
         # Returns: nil
         #
-        def add_ssh_key(key_string, key_type=nil, comment=nil)
+        def add_ssh_key(key_string, key_type=nil, comment=nil, login=nil)
           if key_type == "krb5-principal"
             # create a K5login object and add it
 
@@ -135,7 +134,7 @@ module OpenShift
           else
             # create an SshAuthorizedKeys file object and add to it.
             self.class.notify_observers(:before_add_ssh_key, self, key_string)
-            AuthorizedKeysFile.new(self).add_key(key_string, key_type, comment)
+            AuthorizedKeysFile.new(self).add_key(key_string, key_type, comment, login)
             self.class.notify_observers(:after_add_ssh_key, self, key_string)
           end
         end
@@ -248,8 +247,10 @@ module OpenShift
           krb5_principals = ssh_keys.select {|k| k['type'] == 'krb5-principal'}
 
           self.class.notify_observers(:before_replace_ssh_keys, self)
-          AuthorizedKeysFile.new(self).replace_keys(authorized_keys) if authorized_keys.count > 0
-          K5login.new(self).replace_principals(krb5_principals) if krb5_principals.count > 0
+          # If an empty ssh_keys list is passed, this will intentionally replace the ssh keys with an empty list
+          # The broker should pass all keys available for the application to this method
+          AuthorizedKeysFile.new(self).replace_keys(authorized_keys)
+          K5login.new(self).replace_principals(krb5_principals)
           self.class.notify_observers(:after_replace_ssh_keys, self)
 
         end
@@ -271,11 +272,18 @@ module OpenShift
 
         # Add user environment variable(s)
         def user_var_add(variables, gears = [])
+          config = ::OpenShift::Config.new
+          # Default to 50 maximum allowed user variables
+          user_variable_max_count = (config.get('USER_VARIABLE_MAX_COUNT') || "50" ).to_i
+
           directory = PathUtils.join(@container_dir, '.env', 'user_vars')
           FileUtils.mkpath(directory) unless File.directory?(directory)
 
-          if (Dir.entries(directory).size - 2 + variables.size) > USER_VARIABLE_MAX_COUNT
-            return 255, "CLIENT_ERROR: User Variables maximum of #{USER_VARIABLE_MAX_COUNT} exceeded\n"
+          if (Dir.entries(directory).size - 2 + variables.size) > user_variable_max_count
+            variables.each_pair do |name,value|
+              path = PathUtils.join(directory, name)
+              return 255, "CLIENT_ERROR: User Variables maximum of #{user_variable_max_count} exceeded\n" if !File.exists?(path)
+            end
           end
 
           variables.each_pair do |name, value|

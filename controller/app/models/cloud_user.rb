@@ -163,6 +163,10 @@ class CloudUser
     yield user, login if block_given?
     [user, false]
   rescue Mongoid::Errors::DocumentNotFound
+    # if authentication is configured for lookup only, then return an exception
+    if Rails.application.config.openshift[:auth_user_lookup_only]
+      raise OpenShift::UserException.new(Rails.application.config.openshift[:auth_user_lookup_fail_msg], nil, :new_users_blocked, nil, :forbidden)
+    end
     user = new(create_attributes)
     #user.current_identity = user.identities.build(provider: provider, uid: login)
     #user.login = user.current_identity.id
@@ -244,6 +248,7 @@ class CloudUser
       "view_global_teams" => Rails.application.config.openshift[:default_view_global_teams],
       "max_untracked_addtl_storage_per_gear" =>  Rails.application.config.openshift[:default_max_untracked_addtl_storage_per_gear],
       "max_tracked_addtl_storage_per_gear" =>  Rails.application.config.openshift[:default_max_tracked_addtl_storage_per_gear],
+      "private_ssl_certificates" => Rails.application.config.openshift[:default_private_ssl_certificates],
     }
   end
 
@@ -397,7 +402,7 @@ class CloudUser
   def add_gear_size(gear_size)
     available_sizes = Rails.configuration.openshift[:gear_sizes]
     unless available_sizes.include?(gear_size)
-      raise Exception.new("Size #{gear_size} is not defined. Defined sizes are: #{available_sizes.join ', '}.")
+      raise Exception.new("\nERROR: Size '#{gear_size}' is not defined. Available gear sizes: #{available_sizes.join ', '}.")
     end
     unless capabilities['gear_sizes'].include?(gear_size)
       self._capabilities['gear_sizes'] = capabilities['gear_sizes'] + [gear_size]

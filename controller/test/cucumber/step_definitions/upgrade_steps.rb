@@ -1,6 +1,6 @@
 def upgrade_gear(name, login, gear_uuid)
   current_version = 'expected'
-  cmd = "oo-broker --non-interactive oo-admin-upgrade upgrade-gear --app-name='#{@app.name}' --login='#{@app.login}' --upgrade-gear=#{gear_uuid} --version='#{current_version}'"
+  cmd = "oo-admin-upgrade upgrade-gear --app-name='#{@app.name}' --login='#{@app.login}' --upgrade-gear=#{gear_uuid} --version='#{current_version}'"
   $logger.info("Upgrading with command: #{cmd}")
   output = `#{cmd}`
   $logger.info("Upgrade output: #{output}")
@@ -387,7 +387,7 @@ end
 EOF
 
   IO.write('/tmp/gear_upgrade.rb', gear_upgrade_content)
-  `echo 'GEAR_UPGRADE_EXTENSION=/tmp/gear_upgrade' >> /etc/openshift/node.conf`
+  `echo '\nGEAR_UPGRADE_EXTENSION=/tmp/gear_upgrade' >> /etc/openshift/node.conf`
 end
 
 Given /^a gear level upgrade extension to map the updated software version exists$/ do
@@ -446,7 +446,7 @@ module OpenShift
 end
 EOF
   IO.write('/tmp/gear_upgrade.rb', gear_upgrade_content)
-  `echo 'GEAR_UPGRADE_EXTENSION=/tmp/gear_upgrade' >> /etc/openshift/node.conf`
+  `echo '\nGEAR_UPGRADE_EXTENSION=/tmp/gear_upgrade' >> /etc/openshift/node.conf`
 end
 
 Then /^the invocation markers from the gear upgrade should exist$/ do
@@ -459,7 +459,7 @@ end
 When /^the gears on the node are upgraded with oo-admin-upgrade?$/ do
   uuid_whitelist = @test_apps_hash.values.collect {|app| app.uid}
 
-  upgrade_cmd = "oo-broker --non-interactive oo-admin-upgrade upgrade-node --version expected --gear-whitelist #{uuid_whitelist.join(' ')}"
+  upgrade_cmd = "oo-admin-upgrade upgrade-node --version expected --gear-whitelist #{uuid_whitelist.join(' ')}"
 
   $logger.info("Executing upgrade cmd: #{upgrade_cmd}")
   output = `#{upgrade_cmd}`
@@ -469,7 +469,7 @@ When /^the gears on the node are upgraded with oo-admin-upgrade?$/ do
 end
 
 Then /^existing oo-admin-upgrade output is archived$/ do
-  output = `oo-broker --non-interactive oo-admin-upgrade archive`
+  output = `oo-admin-upgrade archive`
   assert_equal 0, $?.exitstatus
   $logger.info("Archive output: #{output}")
 end

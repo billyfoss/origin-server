@@ -8,7 +8,7 @@
 
 Summary:       Utility scripts for the OpenShift Origin broker
 Name:          openshift-origin-broker-util
-Version: 1.30.2
+Version: 1.37.4
 Release:       1%{?dist}
 Group:         Network/Daemons
 License:       ASL 2.0
@@ -79,6 +79,7 @@ cp -p man/*.8 %{buildroot}%{_mandir}/man8/
 %attr(0750,-,-) %{_sbindir}/oo-register-dns
 %attr(0750,-,-) %{_sbindir}/oo-stats
 %attr(0750,-,-) %{_sbindir}/oo-admin-ctl-team
+%attr(0750,-,-) %{_sbindir}/oo-plot-broker-stats
 
 %{?scl:%scl_root}%{ruby_libdir}/app_info.rb
 
@@ -109,6 +110,127 @@ cp -p man/*.8 %{buildroot}%{_mandir}/man8/
 %{_mandir}/man8/oo-admin-ctl-team.8.gz
 
 %changelog
+* Fri Oct 23 2015 Wesley Hearn <whearn@redhat.com> 1.37.4-1
+- oo-admin-ctl-app: Fix remove-gear ignores min scale setting
+  (vdinh@redhat.com)
+
+* Mon Oct 12 2015 Stefanie Forrester <sedgar@redhat.com> 1.37.3-1
+- oo-admin-ctl-district-elaborate-on-node-identity (miciah.masters@gmail.com)
+- Fix typo for gear_whitelist (oo-admin-upgrade) (william17.burton@gmail.com)
+
+* Fri Oct 03 2015 William Burton <wburton@redhat.com> 1.37.3-1
+- Fix typo for gear_whitelist when calling oo-admin-move upgrade-node
+
+* Wed Sep 23 2015 Stefanie Forrester <sedgar@redhat.com> 1.37.2-1
+- oo-admin-broker-cache: Delete --console flag (miciah.masters@gmail.com)
+
+* Thu Sep 17 2015 Unknown name 1.37.1-1
+- bump_minor_versions for sprint 103 (sedgar@jhancock.ose.phx2.redhat.com)
+
+* Thu Sep 17 2015 Unknown name 1.36.3-1
+- Merge pull request #6216 from tiwillia/memberDomainErrors
+  (dmcphers+openshiftbot@redhat.com)
+- Improve error reporting for member add/remove/update through oo-admin-ctl-
+  domain (tiwillia@redhat.com)
+- Merge pull request #6187 from tiwillia/bz1152524
+  (dmcphers+openshiftbot@redhat.com)
+- Check MongoDB hosts connectivty prior to loading broker rails environment
+  (tiwillia@redhat.com)
+
+* Tue Aug 11 2015 Wesley Hearn <whearn@redhat.com> 1.36.2-1
+- Bug 1214087 - return non-zero on all exceptions in oo-admin-move
+  (agrimm@redhat.com)
+- Merge pull request #6162 from tiwillia/bz1171815
+  (dmcphers+openshiftbot@redhat.com)
+- Add fixing orphaned domain environment variables (tiwillia@redhat.com)
+
+* Thu Jul 02 2015 Wesley Hearn <whearn@redhat.com> 1.36.1-1
+- bump_minor_versions for 2.0.65 (whearn@redhat.com)
+
+* Tue Jun 30 2015 Wesley Hearn <whearn@redhat.com> 1.35.3-1
+- Bug 1146941 (dmcphers@redhat.com)
+- Bug 1163648 (dmcphers@redhat.com)
+- Fixes 1140552 and 1140558 (dmcphers@redhat.com)
+- oo-admin-ctl-domain uses underscores in command options (tiwillia@redhat.com)
+- Merge pull request #6141 from brenton/BZ1221786
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #6140 from tiwillia/restartcarts
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #6139 from tiwillia/bz1218049
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1221786 - Provide a way for users to set a usage_account_id
+  (bleanhar@redhat.com)
+- Merge pull request #6137 from tiwillia/bz1145344
+  (dmcphers+openshiftbot@redhat.com)
+- Add membership manipulation to oo-admin-ctl-domain (tiwillia@redhat.com)
+- oo-admin-ctl-app: allow start/stop/restart of application cartridges
+  (tiwillia@redhat.com)
+- oo-admin-repair should properly handle HA apps with deleted head gears
+  (tiwillia@redhat.com)
+
+* Wed May 13 2015 Wesley Hearn <whearn@redhat.com> 1.35.2-1
+- Bump version for broker-util/openshift-origin-broker-util.spec
+  (whearn@redhat.com)
+- Merge pull request #6069 from tiwillia/bz1191238
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1216191 - oo-admin-ctl-district: look up district by server if not
+  specified (agrimm@redhat.com)
+- Added the '--all' option to oo-admin-ctl-cartridge, v2 (bedin@redhat.com)
+- Bug 1212614 - Various oo-admin-move issues (agrimm@redhat.com)
+- broker-util: allow oo-admin-move to eat a list of gears and add an final
+  output in json (mmahut@redhat.com)
+- Bug 1191238 Bugzilla Link https://bugzilla.redhat.com/show_bug.cgi?id=1191238
+  Allow domain to be specified in oo-admin-ctl-app (tiwillia@redhat.com)
+
+* Wed May 13 2015 Wesley Hearn <whearn@redhat.com> 1.35.1-1
+- bump minor version for sprint 62
+
+* Thu Mar 19 2015 Adam Miller <admiller@redhat.com> 1.34.1-1
+- bump_minor_versions for sprint 60 (admiller@redhat.com)
+
+* Thu Feb 19 2015 Adam Miller <admiller@redhat.com> 1.33.2-1
+- Fixing typos (dmcphers@redhat.com)
+
+* Thu Feb 12 2015 Adam Miller <admiller@redhat.com> 1.33.1-1
+- Merge pull request #6052 from kwoodson/regions
+  (dmcphers+openshiftbot@redhat.com)
+- bump_minor_versions for sprint 57 (admiller@redhat.com)
+- Add region level reporting to oo-stats (cewong@redhat.com)
+
+* Tue Jan 13 2015 Adam Miller <admiller@redhat.com> 1.32.3-1
+- oo-accept-broker: testrecord DNS w/absolute domain (lmeyer@redhat.com)
+
+* Tue Dec 09 2014 Adam Miller <admiller@redhat.com> 1.32.2-1
+- Update spec file (jhonce@redhat.com)
+- Broker - Add script to plot Broker Stats (jhonce@redhat.com)
+
+* Mon Nov 24 2014 Adam Miller <admiller@redhat.com> 1.32.1-1
+- bump_minor_versions for sprint 54 (admiller@redhat.com)
+- Support full DNs in LDAP group members (pep@redhat.com)
+
+* Wed Nov 12 2014 Adam Miller <admiller@redhat.com> 1.31.2-1
+- Merge pull request #5950 from sztsian/bz1162474-keep
+  (dmcphers+openshiftbot@redhat.com)
+- bz1162474 if app_name different with app.name of uuid, throw out an warning
+  (zsun@fedoraproject.org)
+
+* Tue Nov 11 2014 Adam Miller <admiller@redhat.com> 1.31.1-1
+- bump_minor_versions for sprint 53 (admiller@redhat.com)
+
+* Tue Oct 07 2014 Adam Miller <admiller@redhat.com> 1.30.5-1
+- oo-accept-systems: fix errors from PR 5851 (lmeyer@redhat.com)
+- oo-accept-systems: improve cartridge integrity checks (lmeyer@redhat.com)
+
+* Thu Oct 02 2014 Adam Miller <admiller@redhat.com> 1.30.4-1
+- Bug 1145132 - Domain validation fails when adding size due to previously
+  removed size (abhgupta@redhat.com)
+
+* Tue Sep 30 2014 Adam Miller <admiller@redhat.com> 1.30.3-1
+- Bug 1146681 - oo-admin-ctl-domain cannot change allowed gear sizes for a
+  mixed-case domain (abhgupta@redhat.com)
+- Adding checks and repair logic for invalid gear sizes in domains
+  (abhgupta@redhat.com)
+
 * Tue Sep 23 2014 Adam Miller <admiller@redhat.com> 1.30.2-1
 - Multiple bug fixes Bug 1109647 - Loss of alias on SYNOPSIS part for oo-admin-
   ctl-app Bug 1144610 - oo-admin-usage is broken Bug 1130435 - Setting a same

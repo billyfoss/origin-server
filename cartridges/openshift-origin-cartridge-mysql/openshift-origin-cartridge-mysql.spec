@@ -2,7 +2,7 @@
 
 Summary:       Provides embedded mysql support
 Name:          openshift-origin-cartridge-mysql
-Version: 1.28.1
+Version: 1.31.1
 Release:       1%{?dist}
 Group:         Network/Daemons
 License:       ASL 2.0
@@ -48,6 +48,32 @@ Provides mysql cartridge support to OpenShift. (Cartridge Format V2)
 %doc %{cartridgedir}/LICENSE
 
 %changelog
+* Fri Apr 10 2015 Wesley Hearn <whearn@redhat.com> 1.31.1-1
+- bump_minor_versions for sprint 62 (whearn@redhat.com)
+
+* Wed Apr 08 2015 Wesley Hearn <whearn@redhat.com> 1.30.3-1
+- Bump cartridge versions for 2.0.60 (bparees@redhat.com)
+
+* Thu Mar 19 2015 Adam Miller <admiller@redhat.com> 1.30.2-1
+- Bug 1197825 - Unable to set max_allowed_packet for MySQL
+  https://bugzilla.redhat.com/show_bug.cgi?id=1197825 It is not possible to the
+  the MySQL variable "max_allowed_packet" in /etc/my.cnf (bparees@redhat.com)
+
+* Tue Dec 09 2014 Adam Miller <admiller@redhat.com> 1.30.1-1
+- bump_minor_versions for sprint 55 (admiller@redhat.com)
+
+* Wed Dec 03 2014 Adam Miller <admiller@redhat.com> 1.29.3-1
+- Cart version bump for Sprint 54 (vvitek@redhat.com)
+
+* Mon Nov 24 2014 Adam Miller <admiller@redhat.com> 1.29.2-1
+- Merge pull request #5949 from VojtechVitek/upgrade_scrips
+  (dmcphers+openshiftbot@redhat.com)
+- Clean up & unify upgrade scripts (vvitek@redhat.com)
+
+* Tue Nov 11 2014 Adam Miller <admiller@redhat.com> 1.29.1-1
+- bump specs to resolve conflict with hotfixes (admiller@redhat.com)
+- Version bump for the sprint 52 (mfojtik@redhat.com)
+
 * Thu Sep 18 2014 Adam Miller <admiller@redhat.com> 1.28.1-1
 - bump_minor_versions for sprint 51 (admiller@redhat.com)
 - mysql cart: simplify user env var check (jolamb@redhat.com)

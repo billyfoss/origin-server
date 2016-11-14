@@ -2,7 +2,7 @@
 %global httpdconfdir /etc/openshift/cart.conf.d/httpd/python
 
 Name:          openshift-origin-cartridge-python
-Version: 1.29.1
+Version: 1.34.1
 Release:       1%{?dist}
 Summary:       Python cartridge
 Group:         Development/Languages
@@ -97,6 +97,62 @@ Python cartridge for OpenShift. (Cartridge Format V2)
 %exclude %{cartridgedir}/usr/versions/*/template/*.pyo
 
 %changelog
+* Thu Sep 17 2015 Unknown name 1.34.1-1
+- bump_minor_versions for sprint 103 (sedgar@jhancock.ose.phx2.redhat.com)
+
+* Thu Aug 20 2015 Wesley Hearn <whearn@redhat.com> 1.33.3-1
+- Bumping cartridge versions (abhgupta@redhat.com)
+
+* Tue Aug 11 2015 Wesley Hearn <whearn@redhat.com> 1.33.2-1
+- Removed Double backslashes in variables (parth.kolekar@students.iiit.ac.in)
+
+* Thu Jul 02 2015 Wesley Hearn <whearn@redhat.com> 1.33.1-1
+- bump_minor_versions for 2.0.65 (whearn@redhat.com)
+
+* Wed Jul 01 2015 Wesley Hearn <whearn@redhat.com> 1.32.3-1
+- Bump cartridge versions for Sprint 64 (j.hadvig@gmail.com)
+
+* Tue Jun 30 2015 Wesley Hearn <whearn@redhat.com> 1.32.2-1
+- Merge pull request #6184 from jhadvig/python33-envvar
+  (dmcphers+openshiftbot@redhat.com)
+- BZ1225291: Additional fix (j.hadvig@gmail.com)
+- Incorrect self-documents link in README.md for markers and cron under
+  .openshift (bparees@redhat.com)
+- Bug 1225291 - Python-3.3 cartridge PIP wont install requirements.txt
+  dependencies (j.hadvig@gmail.com)
+- Merge pull request #6079 from dashea/python3-template
+  (dmcphers+openshiftbot@redhat.com)
+- Encode the response to bytes before determining the length (dshea@redhat.com)
+
+* Thu Mar 19 2015 Adam Miller <admiller@redhat.com> 1.32.1-1
+- bump_minor_versions for sprint 60 (admiller@redhat.com)
+
+* Wed Feb 25 2015 Adam Miller <admiller@redhat.com> 1.31.3-1
+- Bump cartridge versions for Sprint 58 (maszulik@redhat.com)
+
+* Fri Feb 20 2015 Adam Miller <admiller@redhat.com> 1.31.2-1
+- updating links for developer resources in initial pages for cartridges
+  (cdaley@redhat.com)
+
+* Tue Dec 09 2014 Adam Miller <admiller@redhat.com> 1.31.1-1
+- bump_minor_versions for sprint 55 (admiller@redhat.com)
+
+* Wed Dec 03 2014 Adam Miller <admiller@redhat.com> 1.30.3-1
+- Cart version bump for Sprint 54 (vvitek@redhat.com)
+
+* Mon Nov 24 2014 Adam Miller <admiller@redhat.com> 1.30.2-1
+- Merge pull request #5949 from VojtechVitek/upgrade_scrips
+  (dmcphers+openshiftbot@redhat.com)
+- Clean up & unify upgrade scripts (vvitek@redhat.com)
+
+* Tue Nov 11 2014 Adam Miller <admiller@redhat.com> 1.30.1-1
+- bump_minor_versions for sprint 53 (admiller@redhat.com)
+- Version bump for the sprint 52 (mfojtik@redhat.com)
+
+* Mon Oct 20 2014 Adam Miller <admiller@redhat.com> 1.29.2-1
+- Bug 1151494 - Add WSGIApplicationGroup directive to wsgi.conf
+  (mfojtik@redhat.com)
+
 * Fri Aug 08 2014 Adam Miller <admiller@redhat.com> 1.29.1-1
 - bump_minor_versions for sprint 49 (admiller@redhat.com)
 

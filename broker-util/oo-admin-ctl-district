@@ -2,7 +2,7 @@
 require 'getoptlong'
 require 'pp'
 
-CTL_DISTRICT_COMMANDS = %w[list-available create add-node set-region unset-region deactivate-node activate-node remove-node add-capacity remove-capacity destroy publish-uids ]
+CTL_DISTRICT_COMMANDS = %w[list nodes-available create add-node set-region unset-region deactivate-node activate-node remove-node add-capacity remove-capacity destroy publish-uids]
 DEFAULT_PLATFORM = "Linux"
 
 def usage
@@ -26,11 +26,12 @@ Options:
 -p|--node_profile <gear_size>
     Only required for create
 -i|--server_identity
-    Node server identity (required) (may be a comma-separated list)
+    Node server identity (i.e., its hostname; also may be
+    a comma-separated list or a regex enclosed in slashes) (required)
 -a|--available
     On add-node, add all available nodes with the right profile
 -r|--region <region_name>
-    Region name of the server identitiy.
+    Region name of the server identity.
     Only valid for add-node (optional) and set-region
 -z|--zone <zone_name>
     Zone within the region. Only valid when region is specified
@@ -43,7 +44,6 @@ Options:
 -h|--help
     Show usage info
 USAGE
-  exit 255
 end
 
 def append_district(district, io)
@@ -89,10 +89,17 @@ begin
   opts.each{ |k,v| args[k]=v }
 rescue GetoptLong::Error => e
   usage
+  exit 255
 end
 
 if args["--help"]
   usage
+  exit 0
+end
+
+if args.empty?
+  usage
+  exit 255
 end
 
 uuid     = args["--uuid"]
@@ -164,7 +171,7 @@ if uuid || name
     puts "--size is required with command: #{command}"
     exit 1
   end
-elsif command && ! %w[list-available publish-uids].include?(command)
+elsif command && ! %w[list nodes-available publish-uids remove-node deactivate-node activate-node set-region unset-region].include?(command)
   if command != 'create'
     puts "--uuid or --name is required with command: #{command}"
   else
@@ -185,10 +192,17 @@ def collate_errors(servers, reply, &block)
   end
 end
 
+def district_for_server(server, reply)
+  districts = District.where('servers.name' => server).all
+  raise OpenShift::OOException.new("District not found for #{server}") if districts.length == 0
+  reply.errorIO << "WARNING: #{server} found in multiple districts: #{districts.collect { |d| d['name'] }.join(',')}\n" if districts.length > 1
+  districts[0]
+end
+
 reply = ResultIO.new
 begin
   case command
-  when "list-available"
+  when "nodes-available"
     available_nodes.each do |profile, nodes|
       next if node_profile && profile != node_profile
       reply.resultIO << "Nodes in profile: #{profile}\n"
@@ -227,15 +241,15 @@ begin
       end
     end
   when "set-region"
-    collate_errors(server_identity, reply) {|server| district.set_region(server, region, zone) }
+    collate_errors(server_identity, reply) {|server| d = district || district_for_server(server, reply); d.set_region(server, region, zone) }
   when "unset-region"
-    collate_errors(server_identity, reply) {|server| district.unset_region(server) }
+    collate_errors(server_identity, reply) {|server| d = district || district_for_server(server, reply); d.unset_region(server) }
   when "deactivate-node"
-    collate_errors(server_identity, reply) {|server| district.deactivate_node(server) }
+    collate_errors(server_identity, reply) {|server| d = district || district_for_server(server, reply); d.deactivate_node(server) }
   when "remove-node"
-    collate_errors(server_identity, reply) {|server| district.remove_node(server) }
+    collate_errors(server_identity, reply) {|server| d = district || district_for_server(server, reply); d.remove_node(server) }
   when "activate-node"
-    collate_errors(server_identity, reply) {|server| district.activate_node(server) }
+    collate_errors(server_identity, reply) {|server| d = district || district_for_server(server, reply); d.activate_node(server) }
   when "add-capacity"
     district.add_capacity(size)
     reply.resultIO << "Success!"

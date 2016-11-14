@@ -4,28 +4,29 @@ source "/usr/lib/openshift/cartridge_sdk/bash/sdk"
 
 # source OpenShift environment variable into context
 function load_env {
-    [ -z "$1" ] && return 1
+    [ $# -ne 1 ] && return 1 # unexpected number of arguments
+    [ -z "$1" ] && return 2 # unexpected empty filename
+    [[ "$1" == *' '* ]] && return 3 # unexpected space(s) in filename
 
     if [ -d "$1" ]
     then
       for f in ${1}/*
       do
-        load_env $f
+        load_env "$f"
       done
       return
     fi
 
-    [ -f "$1" ] || return 0
+    [ -f "$1" ] || return 4 # unexpected invalid file
     [[ "$1" =~ .*\.rpmnew$ ]] && return 0
 
-    local contents=$(< $1)
-    local key=$(basename $1)
-    export $key=$(< $1)
+    local key="$(basename $1)"
+    export $key="$(< $1)"
 }
 
 for f in ~/.env/* ~/.env/user_vars/* ~/*/env/*
 do
-    load_env $f
+    load_env "$f"
 done
 
 export PATH=$(build_path)
@@ -36,7 +37,7 @@ CART_CONF_DIR=$OPENSHIFT_CRON_DIR/configuration
 function log_message() {
    msg=${1-""}
    [ -z "$msg" ]  &&  return 0
-   logger -i -s "user-cron-jobs" -p user.info "`date`: $msg"
+   logger -i -s "user-cron-jobs" -p user.info -t "cron_sys_log:" "`date`: $msg"
 }
 
 # Ensure arguments.
@@ -48,6 +49,8 @@ fi
 
 freq=$1
 source "$CART_CONF_DIR/limits"
+
+[[ -f /etc/openshift/cron/limits ]] && source /etc/openshift/cron/limits
 
 # First up check if the cron jobs are enabled.
 if [ ! -f $OPENSHIFT_CRON_DIR/run/jobs.enabled ]; then
@@ -61,10 +64,10 @@ log_message ":START: $freq cron run for openshift user '$OPENSHIFT_GEAR_UUID'"
 SCRIPTS_DIR="$OPENSHIFT_REPO_DIR/.openshift/cron/$freq"
 if [ -d "$SCRIPTS_DIR" ]; then
    # Run all scripts in the scripts directory serially.
-   executor="run-parts"
+   executor="setsid run-parts"
    if [ -n "$MAX_RUN_TIME" ]; then
      # TODO: use signal -s 1 --kill-after=$KILL_AFTER_TIME" when available
-     executor="timeout -s 9 $MAX_RUN_TIME run-parts"
+     executor="setsid timeout -s 9 $MAX_RUN_TIME run-parts"
    fi
 
    (

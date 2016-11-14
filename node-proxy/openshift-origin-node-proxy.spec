@@ -12,7 +12,7 @@
 
 Summary:       Routing proxy for OpenShift Origin Node
 Name:          openshift-origin-node-proxy
-Version: 1.25.1
+Version: 1.26.1
 Release:       1%{?dist}
 Group:         Network/Daemons
 License:       ASL 2.0
@@ -132,6 +132,7 @@ fi
 %endif
 %attr(0755,-,-) %{_bindir}/node-find-proxy-route-files
 %attr(0640,-,-) %{_sysconfdir}/openshift/web-proxy-config.json
+%config(noreplace) %{_sysconfdir}/openshift/web-proxy-config.json
 %attr(0644,-,-) %{_sysconfdir}/logrotate.d/%{name}
 %ghost %attr(0660,root,root) %{logroot}/supervisor.log
 %dir %attr(0700,apache,apache) %{logroot}
@@ -142,6 +143,13 @@ fi
 %doc README
 
 %changelog
+* Mon Oct 20 2014 Adam Miller <admiller@redhat.com> 1.26.1-1
+- bump spec to fix tag collision (admiller@redhat.com)
+- Bug 1153307 - Remove SSLv3 support (jhonce@redhat.com)
+
+* Mon Oct 20 2014 Adam Miller <admiller@redhat.com>
+- Bug 1153307 - Remove SSLv3 support (jhonce@redhat.com)
+
 * Thu Jun 26 2014 Adam Miller <admiller@redhat.com> 1.25.1-1
 - bump_minor_versions for sprint 47 (admiller@redhat.com)
 

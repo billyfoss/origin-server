@@ -4,7 +4,7 @@
 
 Summary:       Provides JBossEAP6.0 support
 Name:          openshift-origin-cartridge-jbosseap
-Version: 2.21.1
+Version: 2.27.3
 Release:       1%{?dist}
 Group:         Development/Languages
 License:       ASL 2.0
@@ -12,8 +12,12 @@ URL:           http://www.openshift.com
 Source0:       http://mirror.openshift.com/pub/openshift-origin/source/%{name}/%{name}-%{version}.tar.gz
 Requires:      rubygem(openshift-origin-node)
 Requires:      openshift-origin-node-util
+Requires:      java-1.6.0-openjdk
+Requires:      java-1.6.0-openjdk-devel
 Requires:      java-1.7.0-openjdk
 Requires:      java-1.7.0-openjdk-devel
+Requires:      java-1.8.0-openjdk
+Requires:      java-1.8.0-openjdk-devel
 Requires:      jbossas-appclient
 Requires:      jbossas-bundles
 Requires:      jbossas-core
@@ -96,6 +100,76 @@ ln -fs /usr/share/openshift/jboss/modules/com/openshift/metrics /etc/alternative
 %doc %{cartridgedir}/LICENSE
 
 %changelog
+* Fri Oct 23 2015 Wesley Hearn <whearn@redhat.com> 2.27.3-1
+- Bumping cartridge versions (abhgupta@redhat.com)
+
+* Thu Oct 15 2015 Stefanie Forrester <sedgar@redhat.com> 2.27.2-1
+- fix rhcsh error output, clean up cart sub hooks (jolamb@redhat.com)
+
+* Thu Sep 17 2015 Unknown name 2.27.1-1
+- bump_minor_versions for sprint 103 (sedgar@jhancock.ose.phx2.redhat.com)
+
+* Thu Sep 17 2015 Unknown name 2.26.4-1
+- Add java-1.6.0-openjdk requirment to jboss cartridges (tiwillia@redhat.com)
+
+* Thu Aug 20 2015 Wesley Hearn <whearn@redhat.com> 2.26.3-1
+- Bumping cartridge versions (abhgupta@redhat.com)
+
+* Tue Aug 11 2015 Wesley Hearn <whearn@redhat.com> 2.26.2-1
+- Include java-1.8 openjdk to support java8 in jbosseap (tiwillia@redhat.com)
+- updating java cartridges to include the java8 marker and JDK8 path
+  (cdaley@redhat.com)
+
+* Thu Jul 02 2015 Wesley Hearn <whearn@redhat.com> 2.26.1-1
+- bump_minor_versions for 2.0.65 (whearn@redhat.com)
+
+* Wed Jul 01 2015 Wesley Hearn <whearn@redhat.com> 2.25.3-1
+- Bump cartridge versions for Sprint 64 (j.hadvig@gmail.com)
+
+* Tue Jun 30 2015 Wesley Hearn <whearn@redhat.com> 2.25.2-1
+- Incorrect self-documents link in README.md for markers and cron under
+  .openshift (bparees@redhat.com)
+
+* Thu Mar 19 2015 Adam Miller <admiller@redhat.com> 2.25.1-1
+- bump_minor_versions for sprint 60 (admiller@redhat.com)
+
+* Wed Feb 25 2015 Adam Miller <admiller@redhat.com> 2.24.3-1
+- Bump cartridge versions for Sprint 58 (maszulik@redhat.com)
+
+* Fri Feb 20 2015 Adam Miller <admiller@redhat.com> 2.24.2-1
+- updating links for developer resources in initial pages for cartridges
+  (cdaley@redhat.com)
+
+* Thu Feb 12 2015 Adam Miller <admiller@redhat.com> 2.24.1-1
+- bump_minor_versions for sprint 57 (admiller@redhat.com)
+
+* Fri Jan 16 2015 Adam Miller <admiller@redhat.com> 2.23.3-1
+- Bumping cartridge versions (j.hadvig@gmail.com)
+
+* Tue Jan 13 2015 Adam Miller <admiller@redhat.com> 2.23.2-1
+- Bug 1180399: Build fails if the default settings.xml is missing
+  (j.hadvig@gmail.com)
+- BUG 1176970: Delete all dependencies except settings.xml (j.hadvig@gmail.com)
+- Bug 1175489: Wrong grep regexp in jbossews (j.hadvig@gmail.com)
+
+* Tue Dec 09 2014 Adam Miller <admiller@redhat.com> 2.23.1-1
+- bump_minor_versions for sprint 55 (admiller@redhat.com)
+
+* Wed Dec 03 2014 Adam Miller <admiller@redhat.com> 2.22.3-1
+- Cart version bump for Sprint 54 (vvitek@redhat.com)
+
+* Mon Nov 24 2014 Adam Miller <admiller@redhat.com> 2.22.2-1
+- Merge pull request #5949 from VojtechVitek/upgrade_scrips
+  (dmcphers+openshiftbot@redhat.com)
+- Clean up & unify upgrade scripts (vvitek@redhat.com)
+
+* Tue Nov 11 2014 Adam Miller <admiller@redhat.com> 2.22.1-1
+- bump_minor_versions for sprint 53 (admiller@redhat.com)
+- Version bump for the sprint 52 (mfojtik@redhat.com)
+
+* Mon Oct 20 2014 Adam Miller <admiller@redhat.com> 2.21.2-1
+- Bug 1147946 - Do not snapshot jboss*/standalone/tmp (jhonce@redhat.com)
+
 * Thu Sep 18 2014 Adam Miller <admiller@redhat.com> 2.21.1-1
 - bump_minor_versions for sprint 51 (admiller@redhat.com)
 

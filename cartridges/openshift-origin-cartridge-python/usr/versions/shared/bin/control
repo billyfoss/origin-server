@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 
 source $OPENSHIFT_CARTRIDGE_SDK_BASH
 source "${OPENSHIFT_PYTHON_DIR}usr/versions/${OPENSHIFT_PYTHON_VERSION}/lib/create-virtenv"
@@ -159,6 +159,7 @@ function build() {
         if curl -m 15 -f -s "$m" &>/dev/null
         then
             OPENSHIFT_PYTHON_MIRROR="-i $m"
+            [ ${OPENSHIFT_PYTHON_VERSION} == "3.3" ] && OPENSHIFT_PIP_TRUSTED_HOST="--trusted-host $(echo ${OPENSHIFT_PYPI_MIRROR_URL} | awk -F/ '{print $3}')"
         fi
     fi
 
@@ -178,12 +179,20 @@ function build() {
     local requirements_file=${OPENSHIFT_PYTHON_REQUIREMENTS_PATH:-requirements.txt}
     if [ -f ${OPENSHIFT_REPO_DIR}${requirements_file} ]; then
         echo "Checking for pip dependency listed in ${requirements_file} file.."
-        ( cd $OPENSHIFT_REPO_DIR; pip install -r ${OPENSHIFT_REPO_DIR}${requirements_file} $OPENSHIFT_PYTHON_MIRROR )
+        ( cd $OPENSHIFT_REPO_DIR; pip install -r ${OPENSHIFT_REPO_DIR}${requirements_file} $OPENSHIFT_PYTHON_MIRROR $OPENSHIFT_PIP_TRUSTED_HOST )
     fi
 
+    echo "Checking pip install marker.."
+    export_pip_install
+
     if [ -f ${OPENSHIFT_REPO_DIR}/setup.py ]; then
-        echo "Running setup.py script.."
-        ( cd $OPENSHIFT_REPO_DIR; python ${OPENSHIFT_REPO_DIR}/setup.py develop $OPENSHIFT_PYTHON_MIRROR )
+        if [ $OPENSHIFT_PYTHON_USE_PIP == "enable" ]; then
+          echo "Running pip install.."
+          ( cd $OPENSHIFT_REPO_DIR; pip install -e . )
+        else
+          echo "Running setup.py script.."
+          ( cd $OPENSHIFT_REPO_DIR; python ${OPENSHIFT_REPO_DIR}/setup.py develop $OPENSHIFT_PYTHON_MIRROR )
+        fi
     fi
 
     relative-virtenv

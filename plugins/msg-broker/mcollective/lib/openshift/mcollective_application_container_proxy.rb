@@ -34,9 +34,14 @@ module OpenShift
     # * id: string - a unique app identifier
     # * district: <type> - a classifier for app placement
     #
-    def initialize(id, district=nil)
+    def initialize(id, district=nil, blocks_multiplier=1, inodes_multiplier=1)
+      blocks_multiplier=Rails.configuration.msg_broker[:quota_blocks_buffer]
+      inodes_multiplier=Rails.configuration.msg_broker[:quota_inodes_buffer]
+      @blocks_multiplier = blocks_multiplier
+      @inodes_multiplier = inodes_multiplier
       @id = id
       @district = district
+      @disable_print_debug = false
     end
 
     # <<factory method>>
@@ -48,6 +53,7 @@ module OpenShift
     # * node_profile: string identifier for a set of node characteristics
     # * district_uuid: identifier for the district
     # * least_preferred_servers: list of server identities that are least preferred. These could be the ones that won't allow the gear group to be highly available
+    # * existing_gears_hosting: map of server identities to the number of gears (of the application that the gear being scheduled belongs to) hosted on them
     # * gear_exists_in_district: true if the gear belongs to a node in the same district
     # * required_uid: the uid that is required to be available in the destination district
     #
@@ -401,6 +407,7 @@ module OpenShift
     # INPUTS:
     # * gear: a Gear object
     # * keep_uid: boolean
+    # * is_group_rollback: boolean - flag for optional archive on rollback
     # * uid: Integer: reserved UID
     # * skip_hooks: boolean
     #
@@ -410,9 +417,10 @@ module OpenShift
     # NOTES:
     # * uses execute_direct
     #
-    def destroy(gear, keep_uid=false, uid=nil, skip_hooks=false)
+    def destroy(gear, keep_uid=false, is_group_rollback=false, uid=nil, skip_hooks=false)
       args = build_base_gear_args(gear)
       args['--skip-hooks'] = true if skip_hooks
+      args['--is-group-rollback'] = true if is_group_rollback
       begin
         result = execute_direct(@@C_CONTROLLER, 'app-destroy', args)
         result_io = parse_result(result, gear)
@@ -688,24 +696,26 @@ module OpenShift
     end
 
     # <<accessor>>
-    # Get the public IP address of a Node
+    # Get the IP address of a Node
+    # i.e. the IP that PUBLIC_NIC is using
     #
     # INPUTS:
     # none
     #
     # RETURNS:
-    # * String: the public IP address of a node
+    # * String: the IP address of a node's PUBLIC_NIC
     #
     # NOTES:
     # * method on Node
     # * calls rpc_get_fact_direct
     #
     def get_ip_address
-      rpc_get_fact_direct('ipaddress_eth0')
+      rpc_get_fact_direct('host_ip')
     end
 
     # <<accessor>>
     # Get the public IP address of a Node
+    # as configured in PUBLIC_IP
     #
     # INPUTS:
     # none
@@ -776,6 +786,34 @@ module OpenShift
     #
     def get_quota_files
       rpc_get_fact_direct('quota_files').to_i
+    end
+
+    # <<accessor>>
+    # Get the available disk space of a Node
+    #
+    # RETURNS:
+    # * Integer: the available disk space of a node in blocks
+    #
+    # NOTES:
+    # * method on Node
+    # * calls rpc_get_fact_direct
+    #
+    def get_node_disk_free
+      rpc_get_fact_direct('node_disk_free').to_i
+    end
+
+    # <<accessor>>
+    # Get the total disk space of a Node
+    #
+    # RETURNS:
+    # * Integer: the total disk space of a node in blocks
+    #
+    # NOTES:
+    # * method on Node
+    # * calls rpc_get_fact_direct
+    #
+    def get_node_total_size
+      rpc_get_fact_direct('node_total_size').to_i
     end
 
     #
@@ -1762,6 +1800,45 @@ module OpenShift
     end
 
     def update_cluster(gear, options)
+      head_gear_quota = get_quota(gear)
+      # set head_gear quotas if necessary
+      # will be necessary if trying to move a non-primary gear before bumping
+      # an over-the-quota-limit head gear
+      #
+      # Find default quotas for node profile
+      default_container = ApplicationContainerProxy.find_available(options)
+      default_quota = default_container.rpc_get_facts_direct(["quota_blocks", "quota_files"])
+      default_blocks = Integer(default_quota[:quota_blocks])
+      default_inodes = Integer(default_quota[:quota_files])
+
+      head_blocks_current_limit = Integer(head_gear_quota[3])
+      head_blocks_used = Integer(head_gear_quota[1])
+
+      head_inodes_current_limit = Integer(head_gear_quota[6])
+      head_inodes_used = Integer(head_gear_quota[4])
+
+      # if head_gear quota usage > 98% current limit, then update-cluster wil need a
+      # small buffer to complete.
+      if head_blocks_used > head_blocks_current_limit * 0.98 || head_inodes_used > head_inodes_current_limit
+        # Use a multiplier of 1.01 to avoid moves failing due to lack of disk space for rewrite of haproxy.cfg and add 10 inodes to inode limit (will be reset to default if usage < default limits).
+        head_blocks_increment = head_blocks_current_limit * 1.01
+        if head_blocks_increment > default_blocks * @blocks_multiplier.to_f
+          head_blocks_increment = default_blocks * @blocks_multiplier.to_f
+        end
+        set_quota(gear, head_blocks_increment/1024/1024, head_inodes_current_limit + 10)
+        log_debug "WARNING: Head gear exceeds quota limit, using quota buffer for update-cluster."
+        log_debug "DEBUG: New gear blocks limit:#{head_blocks_increment.round}, new inodes limit: #{head_inodes_current_limit + 10}"
+      else
+        # reset quotas to default if previously bumped but are now under default limits
+        # or if usage < default limit
+        if head_blocks_used < default_blocks
+          head_blocks_current_limit = default_blocks
+        end
+        if head_inodes_used < default_inodes
+          head_inodes_current_limit = default_inodes
+        end
+        set_quota(gear, head_blocks_current_limit/1024/1024, head_inodes_current_limit)
+      end
       args = build_base_gear_args(gear)
       args = build_update_cluster_args(options, args)
       result = execute_direct(@@C_CONTROLLER, 'update-cluster', args)
@@ -1783,6 +1860,15 @@ module OpenShift
       args['--gear_uuid'] = options[:gear_uuid]
       args['--persist'] = options[:persist]
       RemoteJob.new(@@C_CONTROLLER, 'update-proxy-status', args)
+    end
+
+    # Determine the address to use to rsync to/from a container
+    def get_rsync_address(container)
+      case Rails.configuration.msg_broker[:node_rsync_address]
+        when 'public_hostname' then return container.get_public_hostname
+        when 'server_identity' then return container.id
+        else return container.get_ip_address
+      end
     end
 
     #
@@ -1811,7 +1897,7 @@ module OpenShift
       if gear.group_instance.platform.downcase == "windows"
         log_debug "DEBUG: Restoring ownership and user ACLs for Windows gear '#{gear.uuid}'"
         rsync_keyfile = Rails.configuration.auth[:rsync_keyfile]
-        log_debug `eval \`ssh-agent\`; ssh-add #{rsync_keyfile}; ssh -o StrictHostKeyChecking=no -A root@#{destination_container.get_ip_address} "/cygdrive/c/openshift/bin/oo-cmd.exe oo-admin-restore-acls --uuid:#{gear.uuid}"; exit_code=$?; ssh-agent -k;exit $exit_code`
+        log_debug `eval \`ssh-agent\`; ssh-add #{rsync_keyfile} 2>/dev/null; ssh -o StrictHostKeyChecking=no -A root@#{get_rsync_address(destination_container)} "/cygdrive/c/openshift/bin/oo-cmd.exe oo-admin-restore-acls --uuid:#{gear.uuid}"; exit_code=$?; ssh-agent -k;exit $exit_code`
       end
 
       start_order.each do |cinst|
@@ -1826,8 +1912,8 @@ module OpenShift
         end
       end
 
-      log_debug "DEBUG: Fixing DNS and mongo for gear '#{gear.name}' after move"
-      log_debug "DEBUG: Changing server identity of '#{gear.name}' from '#{source_container.id}' to '#{destination_container.id}'"
+      log_debug "DEBUG: Fixing DNS and mongo for gear '#{gear.uuid}' after move"
+      log_debug "DEBUG: Changing server identity of '#{gear.uuid}' from '#{source_container.id}' to '#{destination_container.id}'"
       gear.server_identity = destination_container.id
       # Persist server identity for gear in mongo
       res = Application.where({"_id" => app.id, "gears.uuid" => gear.uuid}).update({"$set" => {"gears.$.server_identity" => gear.server_identity}})
@@ -1885,7 +1971,7 @@ module OpenShift
               reply.append source_container.stop(gear, cinst)
             end
           rescue Exception=>e
-            # a force-stop will be applied if its a framework cartridge, so ignore the failure on stop
+            # a force-stop will be applied if it's a framework cartridge, so ignore the failure on stop
             if not cinst.cartridge.is_web_framework?
               raise e
             end
@@ -1899,6 +1985,7 @@ module OpenShift
           reply.append source_container.force_stop(gear)
         end
       end
+
       reply
     end
 
@@ -1978,19 +2065,80 @@ module OpenShift
         raise OpenShift::UserException.new("Error moving gear. Move gear only allowed from non-districted/districted node to districted node.")
       end
 
+      # get the quota usage and limits from the existing gear
+      gear_quota = get_quota(gear)
+
       destination_node_profile = destination_container.get_node_profile
-      if source_container.get_node_profile != destination_node_profile and app.scalable
-        log_debug "Cannot change node_profile for *scalable* application gear - this operation is not supported. The destination container's node profile is #{destination_node_profile}, while the gear's node_profile is #{gear.group_instance.gear_size}"
-        raise OpenShift::UserException.new("Error moving gear. Cannot change node profile for *scalable* app.", 1)
+      if source_container.get_node_profile != destination_node_profile
+        if app.scalable
+          log_debug "Cannot change node_profile for *scalable* application gear - this operation is not supported. The destination container's node profile is #{destination_node_profile}, while the gear's node_profile is #{gear.group_instance.gear_size}"
+          raise OpenShift::UserException.new("Error moving gear. Cannot change node profile for *scalable* app.", 1)
+        else
+          # get the base quota blocks and files destination container
+          destination_quota = destination_container.rpc_get_facts_direct(["quota_blocks", "quota_files"])
+
+          # set destination container quotas
+          quota_blocks = Integer(destination_quota[:quota_blocks])
+          quota_files = Integer(destination_quota[:quota_files])
+
+          # determine additional storage, if any
+          # subtract source container quota from source node quota
+          # add the difference to destination quota
+          additional_blocks = Integer(gear_quota[3]) - source_container.get_quota_blocks
+          additional_files = Integer(gear_quota[6]) - source_container.get_quota_files
+          quota_blocks += additional_blocks if additional_blocks > 0
+          quota_files += additional_files if additional_files > 0
+
+          # get current block and file usage from the source container
+          blocks_used = Integer(gear_quota[1])
+          inodes_used = Integer(gear_quota[4])
+
+          # ensure the destination container has space available for the gear contents
+          if blocks_used > quota_blocks || inodes_used > quota_files
+            log_debug "Cannot move #{gear.group_instance.gear_size} size gear to #{destination_node_profile} size while the gear exceeds quota limits for the new size."
+            log_debug "Files used: #{inodes_used}, #{destination_node_profile} profile file limit: #{quota_files}. Blocks used: #{blocks_used}, #{destination_node_profile} profile block limit: #{quota_blocks}."
+            raise OpenShift::UserException.new("Error moving gear. Cannot move gear to #{destination_node_profile} node profile while gear exceeds profile quota limits.")
+          end
+        end
+      else
+        # if gear is over disk quota limit, increase destination quota slightly so gear move, start, stop, restart complete
+        # if gear has reached limit + buffer, oo-evacuate script must be used to move gear
+        # get the base quota blocks and files destination container
+        destination_quota = destination_container.rpc_get_facts_direct(["quota_blocks", "quota_files"])
+        # set destination container quotas - the default quotas according to node profile
+        # Bump with quota buffer if necessary, to a max of original quota * multiplier.  Quota bumped in 1% block and 10 inode increments
+        quota_blocks = Integer(destination_quota[:quota_blocks])
+        @dest_quota_blocks_b4_bump = quota_blocks
+        quota_blocks_buffer = Integer(quota_blocks) * @blocks_multiplier.to_f
+        quota_files = Integer(destination_quota[:quota_files])
+        @dest_quota_files_b4_bump = quota_files
+        quota_files_buffer = Integer(quota_files) * @inodes_multiplier.to_f
+        # get current block and file usage from the source container
+        blocks_used = Integer(gear_quota[1])
+        inodes_used = Integer(gear_quota[4])
+        quota_blocks_increment = [Integer(blocks_used) * 1.01, Integer(quota_blocks) * 1.01].max
+        quota_files_increment = [Integer(inodes_used) + 10, Integer(quota_files) + 10].max
+
+        if blocks_used >= quota_blocks * 0.98 || inodes_used >= quota_files
+          if blocks_used > quota_blocks_buffer || inodes_used > quota_files_buffer
+            log_debug "Cannot move #{gear.group_instance.gear_size} size gear to #{destination_node_profile}.  Gear exceeds quota blocks: #{destination_quota[:quota_blocks]} inodes: #{destination_quota[:quota_files]} and quota limit buffer (#{quota_blocks_buffer.round}, #{quota_files_buffer.round}) also exhausted."
+            raise OpenShift::UserException.new("Error moving gear. Cannot move gear to #{destination_node_profile} node profile while gear exceeds profile quota limits.")
+          end
+          log_debug "WARNING: Quota exceeds 98% of target quota limits, using buffer."
+          log_debug "QUOTA BUFFER: blocks max: #{quota_blocks_buffer.round} inodes max: #{quota_files_buffer.round} allowed in increments."
+          quota_blocks = quota_blocks_increment
+          quota_files = quota_files_increment
+          log_debug "DEBUG: Current blocks quota increased by 1% to #{quota_blocks.round}."
+          log_debug "DEBUG: Current inodes quota increased by 10 inodes to #{quota_files.round}."
+        else
+          # leave quota the same if node profile does not change and gear is not over quota limit
+          quota_blocks = Integer(gear_quota[3])
+          quota_files = Integer(gear_quota[6])
+        end
       end
 
       # get the application state
       idle, leave_stopped = get_app_status(app)
-
-      # get the quota blocks and files from the gear
-      gear_quota = get_quota(gear)
-      quota_blocks = Integer(gear_quota[3])
-      quota_files = Integer(gear_quota[6])
 
       gear.component_instances.each do |cinst|
         state_map[cinst.cartridge_name] = [idle, leave_stopped]
@@ -2015,10 +2163,10 @@ module OpenShift
             cart = cinst.cartridge
             idle, leave_stopped = state_map[cart.name]
 
-            if app.scalable and not cart.is_web_proxy?
+            if app.scalable
               begin
                 reply.append destination_container.expose_port(gear, cinst)
-              rescue Exception=>e
+              rescue Exception=> e
                 # just pass because some embedded cartridges do not have expose-port hook implemented (e.g. jenkins-client)
               end
             end
@@ -2077,8 +2225,8 @@ module OpenShift
           res = Application.where({"_id" => app.id, "group_instances._id" => gear.group_instance.id}).update({"$set" => {"group_instances.$.gear_size" => gear.group_instance.gear_size}})
           raise OpenShift::OOException.new("Could not set group instance gear_size to #{gear.group_instance.gear_size}") if res.nil? or !res["updatedExisting"]
           # destroy destination
-          log_debug "DEBUG: Moving failed.  Rolling back gear '#{gear.name}' in '#{app.name}' with delete on '#{destination_container.id}'"
-          reply.append destination_container.destroy(gear, !district_changed, nil, true)
+          log_debug "DEBUG: Moving failed.  Rolling back gear '#{gear.uuid}' in '#{app.name}' with delete on '#{destination_container.id}'"
+          reply.append destination_container.destroy(gear, !district_changed, false, nil, true)
 
           raise
         end
@@ -2104,9 +2252,14 @@ module OpenShift
         end
       end
 
-      move_gear_destroy_old(gear, source_container, destination_container, district_changed)
+      reply.append move_gear_destroy_old(gear, source_container, destination_container, district_changed)
 
-      log_debug "Successfully moved gear with uuid '#{gear.uuid}' of app '#{app.name}' from '#{source_container.id}' to '#{destination_container.id}'"
+      # if gear is over disk quota limit, issue warning after move
+      if Integer(gear_quota[1]) > @dest_quota_blocks_b4_bump  || Integer(gear_quota[4]) > @dest_quota_files_b4_bump
+        log_debug "WARNING:  Gear with uuid '#{gear.uuid}' of app '#{app.name}' was moved successfully from '#{source_container.id}' to '#{destination_container.id}' but quota limits for #{destination_node_profile} node profile exceeded."
+      else
+        log_debug "Successfully moved gear with uuid '#{gear.uuid}' of app '#{app.name}' from '#{source_container.id}' to '#{destination_container.id}'"
+      end
       reply
     end
 
@@ -2133,7 +2286,7 @@ module OpenShift
       reply = ResultIO.new
       log_debug "DEBUG: Deconfiguring old app '#{app.name}' on #{source_container.id} after move"
       begin
-        reply.append source_container.destroy(gear, !district_changed, gear.uid, true)
+        reply.append source_container.destroy(gear, !district_changed, false, gear.uid, true)
       rescue Exception => e
         log_debug "DEBUG: The application '#{app.name}' with gear uuid '#{gear.uuid}' is now moved to '#{destination_container.id}' but not completely deconfigured from '#{source_container.id}'"
         raise
@@ -2183,7 +2336,6 @@ module OpenShift
           required_uid = nil
         end
 
-        least_preferred_servers = [source_container.id]
         opts = { :node_profile => destination_gear_size, :district_uuid => destination_district_uuid,
                  :gear => gear, :gear_exists_in_district => gear_exists_in_district, :required_uid => required_uid }
 
@@ -2251,36 +2403,53 @@ module OpenShift
       reply = ResultIO.new
       source_container = gear.get_proxy
       platform = gear.group_instance.platform
+      quota = get_quota(gear)
+      source_used_blocks = quota[1] unless quota.nil?
       log_debug "DEBUG: Gear platform is '#{platform}'"
-      log_debug "DEBUG: Creating new account for gear '#{gear.name}' on #{destination_container.id}"
+      destination_avail_space = destination_container.get_node_disk_free
+      destination_total_space = destination_container.get_node_total_size
+      min_node_disk_buffer = Rails.application.config.openshift[:min_node_disk_buffer].to_f
+
+      # check here to make sure addition of gear to destination_container
+      # will not result in > 95% full destination_container
+      if (destination_avail_space - source_used_blocks.to_f)/destination_total_space < (min_node_disk_buffer/100)
+        max_percentage = sprintf('%.0f', 100 - min_node_disk_buffer)
+        raise OpenShift::NodeUnavailableException.new("Gear '#{gear.uuid}' cannot be moved to '#{destination_container.id}'.  Not enough disk space, node would be > #{max_percentage}% full after move.", 140)
+      end
+
+      log_debug "DEBUG: Creating new account for gear '#{gear.uuid}' on #{destination_container.id}"
       sshkey_required = false
       initial_deployment_dir_required = false
       reply.append destination_container.create(gear, quota_blocks, quota_files, sshkey_required, initial_deployment_dir_required)
       rsync_keyfile = Rails.configuration.auth[:rsync_keyfile]
-      log_debug "DEBUG: Moving content for app '#{app.name}', gear '#{gear.name}' to #{destination_container.id}"
+      log_debug "DEBUG: Moving content for app '#{app.name}', gear '#{gear.uuid}' to #{destination_container.id}"
+
+      source_address = get_rsync_address(source_container)
+      destination_address = get_rsync_address(destination_container)
+
       case platform.downcase
         when "windows"
           #Rsync arguments had to be changed for windows to move the gear with full rights and reset them correctly in the post move method
-          log_debug `eval \`ssh-agent\`; ssh-add #{rsync_keyfile}; ssh -o StrictHostKeyChecking=no -A root@#{source_container.get_ip_address} "rsync --perms -rltgoD0v --chmod=Du=rwx,Dg=rwx,Do=rwx,Fu=rww,Fg=rwx,Fo=rwx -p --exclude 'profile' -e 'ssh -o StrictHostKeyChecking=no' /cygdrive/c/openshift/gears/#{gear.uuid}/ root@#{destination_container.get_ip_address}:/cygdrive/c/openshift/gears/#{gear.uuid}/"; exit_code=$?; ssh-agent -k;exit $exit_code`
+          log_debug `eval \`ssh-agent\`; ssh-add #{rsync_keyfile} 2>/dev/null; ssh -o StrictHostKeyChecking=no -A root@#{source_address} "rsync --perms -rltgoD0v --chmod=Du=rwx,Dg=rwx,Do=rwx,Fu=rww,Fg=rwx,Fo=rwx -p --exclude 'profile' -e 'ssh -o StrictHostKeyChecking=no' /cygdrive/c/openshift/gears/#{gear.uuid}/ root@#{destination_address}:/cygdrive/c/openshift/gears/#{gear.uuid}/"; exit_code=$?; ssh-agent -k;exit $exit_code`
         else
-          log_debug `eval \`ssh-agent\`; ssh-add #{rsync_keyfile}; ssh -o StrictHostKeyChecking=no -A root@#{source_container.get_ip_address} "rsync -aAXS -e 'ssh -o StrictHostKeyChecking=no' /var/lib/openshift/#{gear.uuid}/ root@#{destination_container.get_ip_address}:/var/lib/openshift/#{gear.uuid}/"; exit_code=$?; ssh-agent -k; exit $exit_code`
+          log_debug `eval \`ssh-agent\`; ssh-add #{rsync_keyfile} 2>/dev/null; ssh -o StrictHostKeyChecking=no -A root@#{source_address} "rsync -aAXS -e 'ssh -o StrictHostKeyChecking=no' /var/lib/openshift/#{gear.uuid}/ root@#{destination_address}:/var/lib/openshift/#{gear.uuid}/"; exit_code=$?; ssh-agent -k; exit $exit_code`
       end
 
       if $?.exitstatus != 0
-        raise OpenShift::NodeException.new("Error moving app '#{app.name}',platform '#{platform}', gear '#{gear.name}' from #{source_container.id} to #{destination_container.id}", 143)
+        raise OpenShift::NodeException.new("Error moving app '#{app.name}', platform '#{platform}', gear '#{gear.uuid}' from #{source_container.id} to #{destination_container.id}", 143)
       end
 
-      log_debug "DEBUG: Moving system components for app '#{app.name}', gear '#{gear.name}' to #{destination_container.id}"
+      log_debug "DEBUG: Moving system components for app '#{app.name}', gear '#{gear.uuid}' to #{destination_container.id}"
       case platform.downcase
         when "windows"
           #Rsync arguments changed, preserving extended attributes and ACLs cannot be used on windows
-          log_debug `eval \`ssh-agent\`; ssh-add #{rsync_keyfile}; ssh -o StrictHostKeyChecking=no -A root@#{source_container.get_ip_address} "rsync -rltgoD0v -e 'ssh -o StrictHostKeyChecking=no' --include '.httpd.d/' --include '.httpd.d/#{gear.uuid}_***' --include '#{gear.name}-#{app.domain.namespace}' --include '.last_access/' --include '.last_access/#{gear.uuid}' --exclude '*' /cygdrive/c/openshift/gears/ root@#{destination_container.get_ip_address}:/cygdrive/c/openshift/gears/"; exit_code=$?; ssh-agent -k; exit $exit_code`
+          log_debug `eval \`ssh-agent\`; ssh-add #{rsync_keyfile} 2>/dev/null; ssh -o StrictHostKeyChecking=no -A root@#{source_address} "rsync -rltgoD0v -e 'ssh -o StrictHostKeyChecking=no' --include '.httpd.d/' --include '.httpd.d/#{gear.uuid}_***' --include '#{gear.name}-#{app.domain.namespace}' --include '.last_access/' --include '.last_access/#{gear.uuid}' --exclude '*' /cygdrive/c/openshift/gears/ root@#{destination_address}:/cygdrive/c/openshift/gears/"; exit_code=$?; ssh-agent -k; exit $exit_code`
         else
-          log_debug `eval \`ssh-agent\`; ssh-add #{rsync_keyfile}; ssh -o StrictHostKeyChecking=no -A root@#{source_container.get_ip_address} "rsync -aAXS -e 'ssh -o StrictHostKeyChecking=no' --include '.httpd.d/' --include '.httpd.d/#{gear.uuid}_***' --include '#{gear.name}-#{app.domain_namespace}' --include '.last_access/' --include '.last_access/#{gear.uuid}' --exclude '*' /var/lib/openshift/ root@#{destination_container.get_ip_address}:/var/lib/openshift/"; exit_code=$?; ssh-agent -k; exit $exit_code`
+          log_debug `eval \`ssh-agent\`; ssh-add #{rsync_keyfile} 2>/dev/null; ssh -o StrictHostKeyChecking=no -A root@#{source_address} "rsync -aAXS -e 'ssh -o StrictHostKeyChecking=no' --include '.httpd.d/' --include '.httpd.d/#{gear.uuid}_***' --include '#{gear.name}-#{app.domain_namespace}' --include '.last_access/' --include '.last_access/#{gear.uuid}' --exclude '*' /var/lib/openshift/ root@#{destination_address}:/var/lib/openshift/"; exit_code=$?; ssh-agent -k; exit $exit_code`
       end
 
       if $?.exitstatus != 0
-        raise OpenShift::NodeException.new("Error moving system components for app '#{app.name}', platform '#{platform}', gear '#{gear.name}' from #{source_container.id} to #{destination_container.id}", 143)
+        raise OpenShift::NodeException.new("Error moving system components for app '#{app.name}', platform '#{platform}', gear '#{gear.uuid}' from #{source_container.id} to #{destination_container.id}", 143)
       end
 
       unless platform.downcase == "windows"
@@ -2534,6 +2703,11 @@ module OpenShift
       end
     end
 
+    # Disable the printing of debug messages
+    def disable_log_debug!
+      @disable_print_debug = true
+    end
+
     protected
 
     #
@@ -2666,7 +2840,7 @@ module OpenShift
     #
     def log_debug(message)
       Rails.logger.debug message
-      puts message
+      puts message unless @disable_print_debug
     end
 
     #
@@ -3007,6 +3181,7 @@ module OpenShift
     # * node_profile: String identifier for a set of node characteristics
     # * district_uuid: String identifier for the district
     # * least_preferred_servers: list of server identities that are least preferred. These could be the ones that won't allow the gear group to be highly available
+    # * existing_gears_hosting: map of server identities to the number of gears (of the application that the gear being scheduled belongs to) hosted on them
     # * force_rediscovery: Boolean
     # * gear_exists_in_district: Boolean - true if the gear belongs to a node in the same district
     # * required_uid: String - the uid that is required to be available in the destination district
@@ -3032,6 +3207,7 @@ module OpenShift
       district_uuid = opts[:district_uuid]
       least_preferred_servers = opts[:least_preferred_servers]
       restricted_servers = opts[:restricted_servers]
+      existing_gears_hosting = opts[:existing_gears_hosting]
       gear = opts[:gear]
       force_rediscovery = opts[:force_rediscovery] if opts[:force_rediscovery]
       gear_exists_in_district = opts[:gear_exists_in_district] if opts[:gear_exists_in_district]
@@ -3107,9 +3283,9 @@ module OpenShift
         found_district = false
         districts.each do |district|
           # skip district servers in these cases:
-          # - if required uid is not availabe in the district
+          # - if required uid is not available in the district
           # - server is not active
-          # - server can not accomodate any more gears
+          # - server can not accommodate any more gears
           # - server not part of any zone when user requested zone
           # - if request region is not available
           next if required_uid and !district.available_uids.include?(required_uid)
@@ -3155,7 +3331,10 @@ module OpenShift
           reloaded_app = Application.find_by(_id: gear.application._id)
           reloaded_app.gears.each do |g|
             if g.server_identity
-              server = District.find_server(g.server_identity, districts)
+              # we are not providing the districts argument here
+              # since the current gear size might be different from what is now required
+              # districts list only contains districts that match rhe required node profile
+              server = District.find_server(g.server_identity)
               break
             end
           end
@@ -3165,11 +3344,15 @@ module OpenShift
 
             # Check if we have min zones for app gear group
             zones_consumed_capacity = {}
+            zone_app_gears_map = {}
             server_infos.each do |server_info|
               zone_id = server_info.zone_id
               if zone_id
                 zones_consumed_capacity[zone_id] = 0 unless zones_consumed_capacity[zone_id]
                 zones_consumed_capacity[zone_id] += server_info.node_consumed_capacity
+                # initialize zone_app_gears_map
+                # it holds the number of existing gears for this particular app in a given zone
+                zone_app_gears_map[zone_id] = 0 unless zone_app_gears_map[server.zone_id]
               end
             end
             available_zones_count = zones_consumed_capacity.keys.length
@@ -3196,36 +3379,68 @@ module OpenShift
               end
             end
 
-            # Find least preferred zones
-            least_preferred_zone_ids = []
-            least_preferred_servers.each do |server_identity|
+            # Find the zones that have existing gears
+            existing_gears_zone_ids = []
+            existing_gears_hosting.each do |server_identity, gear_count|
               next unless server_identity
               server = District.find_server(server_identity, districts)
-              least_preferred_zone_ids << server.zone_id if server.zone_id
-            end if least_preferred_servers.present?
-            least_preferred_zone_ids = least_preferred_zone_ids.uniq
+              if server.zone_id
+                existing_gears_zone_ids << server.zone_id
+                # set the number of existing gears for this particular app for a given zone
+                zone_app_gears_map[server.zone_id] = 0 unless zone_app_gears_map[server.zone_id]
+                zone_app_gears_map[server.zone_id] += gear_count
+              end
+            end if existing_gears_hosting.present?
+            existing_gears_zone_ids = existing_gears_zone_ids.uniq
 
-            if least_preferred_zone_ids.present?
+            if existing_gears_zone_ids.present?
               available_zone_ids = zones_consumed_capacity.keys
-              # Consider least preferred zones only when we have no available zone that's not in least preferred zones.
-              unless (available_zone_ids - least_preferred_zone_ids).empty?
+              # Consider removing zones with existing gears (for this app) only when we have other available zones that are not in this list.
+              unless (available_zone_ids - existing_gears_zone_ids).empty?
                 # Remove least preferred zones from the list, ensuring there is at least one server remaining
-                server_infos.delete_if { |server_info| (server_infos.length > 1) && least_preferred_zone_ids.include?(server_info.zone_id) }
-                zones_consumed_capacity.delete_if { |zone_id, capacity| least_preferred_zone_ids.include?(zone_id) }
+                server_infos.delete_if { |server_info| (server_infos.length > 1) && existing_gears_zone_ids.include?(server_info.zone_id) }
+                zones_consumed_capacity.delete_if { |zone_id, capacity| existing_gears_zone_ids.include?(zone_id) }
               end
             end
 
-            # Distribute zones evenly, pick zones that are least consumed/have max available capacity
-            min_consumed_capacity = zones_consumed_capacity.values.min
-            preferred_zones = zones_consumed_capacity.select { |zone_id, capacity| capacity <= min_consumed_capacity }.keys
+            # Distribute gears for this app across zones evenly
+            # identify zones that have the least number of gears for this app
+            min_zone_gears = zone_app_gears_map.values.min || 0
+            preferred_zones = zone_app_gears_map.map { |server_identity, gears| server_identity if gears <= min_zone_gears }.compact
 
-            # Remove the servers from the list that does not belong to preferred zones
+            # find the selected zones in the zones_consumed_capacity map
+            zones_consumed_capacity.select! { |zone_id, _| preferred_zones.include? zone_id }
+
+            # Distribute all gears (across all apps) across zones evenly
+            # identify the least consumed zones (have max available capacity)
+            min_consumed_capacity = zones_consumed_capacity.values.min
+            preferred_zones = zones_consumed_capacity.map { |zone_id, capacity| zone_id if capacity <= min_consumed_capacity }.compact
+
+            # Remove the servers from the list that do not belong to preferred zones
             server_infos.delete_if { |server_info| (server_infos.length > 1) && !preferred_zones.include?(server_info.zone_id) }
+          end
+
+          if existing_gears_hosting.present?
+            # find out the minimum number of gears for this app that are present on any node
+            # filter out the nodes that have more gears on them than this minimum number
+            if server_infos.all? {|server| existing_gears_hosting.keys.include?(server.name) }
+              min_app_gears_on_nodes = existing_gears_hosting.values.min || 0
+              existing_gears_hosting.select! {|_, gear_count| gear_count > min_app_gears_on_nodes}
+              server_infos.delete_if { |server_info| (server_infos.length > 1) && existing_gears_hosting.keys.include?(server_info.name) }
+              server_infos
+            else
+              server_infos.delete_if { |server_info| (server_infos.length > 1) && existing_gears_hosting.keys.include?(server_info.name) }
+            end
           end
         end
 
         # Remove the least preferred servers from the list, ensuring there is at least one server remaining
-        server_infos.delete_if { |server_info| (server_infos.length > 1) && least_preferred_servers.include?(server_info.name) } if least_preferred_servers.present?
+        if least_preferred_servers.present?
+          # Ignore least preferred servers if all servers are considered least preferred
+          unless server_infos.all? {|server| least_preferred_servers.include?(server.name) }
+            server_infos.delete_if { |server_info| (server_infos.length > 1) && least_preferred_servers.include?(server_info.name) }
+          end
+        end
       end
 
       return server_infos
@@ -3300,20 +3515,51 @@ module OpenShift
       end
       server_infos.delete_if { |server_info| !server_info.zone_id } if has_zone_node
 
-      # Sort by node active capacity (consumed capacity) and take the best half
-      server_infos = server_infos.sort_by { |server_info| server_info.node_consumed_capacity }
-      # consider the top half and no less than min(4, the actual number of available)
-      server_infos = server_infos.first([4, (server_infos.length / 2).to_i].max)
+      if server_infos.length > 4
+        # Take all nodes with > the average remaining capacity.  Make sure to take at least max(4, 20% of nodes) nodes.
+        server_infos.sort_by! { |server_info| server_info.node_consumed_capacity }.reverse!
+        node_consumed_capacities = server_infos.map { |server_info| server_info.node_consumed_capacity }
+        average_consumed_capacity = (node_consumed_capacities.inject(0.0) { |sum, c| sum + c } / node_consumed_capacities.length)
+        # Add a little so average isn't as harsh at the low end.  Ex:
+        # If you have nodes with capacity of 5,5,5,5,6,6,6,6 which averages to 5.5.  You probably don't want to leave out the 6s from random selection.
+        # But if you have nodes with 98,98,98,98,99,99,99,99 capacities and average of 98.5, you probably do want to leave out the 99s.
+        # The cut off capacity's goal is to satisfy both of these use cases.
+        cut_off_capacity = average_consumed_capacity + (1 - average_consumed_capacity/100)
+        min_nodes = [4, (server_infos.length * 0.2).to_i].max
+        server_infos.delete_if { |server_info| server_info.node_consumed_capacity > cut_off_capacity && server_infos.length > min_nodes }
 
-      # Sort by district available capacity and take the best half
-      server_infos = server_infos.sort_by { |server_info| (server_info.district_available_capacity ? server_info.district_available_capacity : 1) }
-      # consider the top half and no less than min(4, the actual number of available)
-      server_infos = server_infos.last([4, (server_infos.length / 2).to_i].max)
+        half_full_count = 0
+        server_infos.each do |server_info|
+          if server_info.district_available_capacity && server_info.district_available_capacity < (Rails.configuration.msg_broker[:districts][:max_capacity].to_f / 2).to_i
+            half_full_count += 1
+          end
+        end
+        half_full_ratio = half_full_count.to_f / server_infos.length
+        # Sort by district available capacity
+        server_infos.sort_by! { |server_info| server_info.district_available_capacity || 1 }
+        # consider the top 80% and no less than min(4, the actual number of available).  Take more than 80% if that many districts are less than 50% full.
+        server_infos = server_infos.last([4, (server_infos.length * [0.8, (1-half_full_ratio)].max).to_i].max)
+      end
 
       server_info = nil
       unless server_infos.empty?
-        # Randomly pick one of the best options
-        server_info = server_infos[rand(server_infos.length)]
+        server_infos.sort_by! { |server_info| server_info.node_consumed_capacity }.reverse!
+        # Weight the servers by their availability
+        # Divide by 2 gives a 3:1 ratio of most to least available selection.  Divide by 4 would give 5:1.
+        weight_skew = (server_infos.length.to_f / 2).round
+        # The most available nodes are at the end of the list and are associated with a larger portion of the sum
+        # Ex: [4,3,2,1] => (((4/2) * (3)) + (2*4)) = 14
+        weights_sum = (((server_infos.length.to_f/2) * (server_infos.length-1)) + (weight_skew * server_infos.length)).to_i
+        random_weighted_position = rand(weights_sum)
+
+        # Map the random weighted position into its corresponding index
+        # Ex from above continued results in:
+        # 0,1 => 0
+        # 2,3,4 => 1
+        # 5,6,7,8 => 2
+        # 9,10,11,12,13 => 3
+        random_index = (0.5 - weight_skew + Math.sqrt((weight_skew - 0.5)**2 + (2 * random_weighted_position))).floor
+        server_info = server_infos[random_index]
         Rails.logger.debug "Selecting best fit node: server: #{server_info.name} capacity: #{server_info.node_consumed_capacity}"
       end
 
@@ -3719,11 +3965,11 @@ module OpenShift
     end
 
     def build_ssh_key_args_with_content(ssh_keys)
-      ssh_keys.map { |k| {'key' => k['content'], 'type' => k['type'], 'comment' => k['name'], 'content' => k['content']} }
+      ssh_keys.map { |k| {'key' => k['content'], 'type' => k['type'], 'comment' => k['name'], 'content' => k['content'], 'login' => k['login']} }
     end
 
     def build_ssh_key_args(ssh_keys)
-      ssh_keys.map { |k| {'key' => k['content'], 'type' => k['type'], 'comment' => k['name']} }
+      ssh_keys.map { |k| {'key' => k['content'], 'type' => k['type'], 'comment' => k['name'], 'login' => k['login']} }
     end
 
   end
